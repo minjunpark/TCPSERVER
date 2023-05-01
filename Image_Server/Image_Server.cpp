@@ -50,13 +50,12 @@ int main()
 	if (WSAStartup(MAKEWORD(2, 2), &wsa) != 0)
 		return 1;
 
-	//socket() 서버용 소켓을 세팅한다
+	//socket()
 	SOCKET listen_sock = socket(AF_INET, SOCK_STREAM, 0);
 	if (listen_sock == INVALID_SOCKET) err_quit(L"socket()");
 
 
 	//bind()
-	//세팅한 소켓을 포트와 묶는다.
 	SOCKADDR_IN serveraddr;
 	ZeroMemory(&serveraddr, sizeof(serveraddr));
 	serveraddr.sin_family = AF_INET;
@@ -65,7 +64,7 @@ int main()
 	retval = bind(listen_sock, (SOCKADDR*)&serveraddr, sizeof(serveraddr));
 	if (retval == SOCKET_ERROR)err_quit(L"bind()");
 
-	//listen()//듣기용 소캣
+	//listen()
 	retval = listen(listen_sock, SOMAXCONN);
 	if (retval == SOCKET_ERROR)err_quit(L"listen()");
 
@@ -79,7 +78,7 @@ int main()
 	{
 		//accept();
 		addrlen = sizeof(clientaddr);
-		client_sock = accept(listen_sock, (SOCKADDR*)&clientaddr, &addrlen);//오는 데이터를 계속해서 읽어들인다.
+		client_sock = accept(listen_sock, (SOCKADDR*)&clientaddr, &addrlen);
 		if (client_sock == INVALID_SOCKET)
 		{
 			err_display(L"accept()");
@@ -118,7 +117,7 @@ int main()
 			}
 			printf("retval %d \n", retval);
 			//받은 데이터 출력
-			buf[retval / 2] = '\0';//UNITCODE가 2배이므로 반을 나눠서 넣는다.
+			buf[retval / 2] = '\0';
 			wprintf(L"[TCP/%s:%d] %s\n", clientIP,
 				ntohs(clientaddr.sin_port), buf);
 

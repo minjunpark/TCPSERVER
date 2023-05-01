@@ -11,13 +11,11 @@
 #define SERVERPORT 9000
 #define BUFSIZE 512
 
-
-
 //소켓저장을 위한 구조체와 변수
 struct SOCKETINFO
 {
 	SOCKET sock;
-	WCHAR buf[BUFSIZE + 2];
+	WCHAR buf[BUFSIZE + 1];
 	int recvbytes;
 	int sendbytes;
 };
@@ -45,7 +43,7 @@ int main()
 		return 1;
 
 	int retval;
-	
+
 	//socket()
 	SOCKET listen_sock = socket(AF_INET, SOCK_STREAM, 0);
 	if (listen_sock == INVALID_SOCKET) err_quit(L"socket()");
@@ -69,19 +67,20 @@ int main()
 	if (retval == SOCKET_ERROR)err_display(L"ioctlsocket()");
 
 	//데이터 통신에 사용할 변수
-	FD_SET rset, wset;
+	FD_SET rset;
+	FD_SET wset;
 	SOCKET client_sock;
 	SOCKADDR_IN clientaddr;
 	int addrlen;
 	int i;
-	
-	for (;;)
+
+	while (1)
 	{
 		//소켓 셋 초기화
 		FD_ZERO(&rset);
 		FD_ZERO(&wset);
 		FD_SET(listen_sock, &rset);
-		for (i=0;i<nTotalSockets;i++)
+		for (i = 0; i < nTotalSockets; i++)
 		{
 			if (SocketInfoArray[i]->recvbytes > SocketInfoArray[i]->sendbytes)
 			{
@@ -94,15 +93,15 @@ int main()
 		}
 
 		//select()
-		retval = select(0,&rset,&wset,NULL,NULL);
+		retval = select(0, &rset, &wset, NULL, NULL);
 		if (retval == SOCKET_ERROR)err_quit(L"select()");
 
 		//소켓 셋 검사(1): 클라이언트 접속 수용
-		if (FD_ISSET(listen_sock, &rset))
+		if (FD_ISSET(listen_sock, &rset))//리슨소켓에 접속한 녀석이 있다면
 		{
 			addrlen = sizeof(clientaddr);
-			client_sock = accept(listen_sock,(SOCKADDR*)&clientaddr,&addrlen);
-			if (client_sock==INVALID_SOCKET)
+			client_sock = accept(listen_sock, (SOCKADDR*)&clientaddr, &addrlen);//accept처리
+			if (client_sock == INVALID_SOCKET)
 			{
 				err_display(L"accept()");
 			}
@@ -111,7 +110,7 @@ int main()
 				WCHAR clientIP[40] = { 0, };
 				InetNtopW(AF_INET, &clientaddr.sin_addr, clientIP, sizeof(clientIP));
 				//if (InetNtopW(AF_INET, &clientaddr.sin_addr, clientIP, sizeof(clientIP)) == NULL) {}
-				
+
 				wprintf(L"\n[TCP 서버] 클라이언트 접속: IP 주소 %s, 포트 번호=%d\n",
 					clientIP, ntohs(clientaddr.sin_port));
 				//소켓 정보 추가
@@ -119,11 +118,12 @@ int main()
 			}
 		}
 		//소켓 셋 검사(2):데이터 통신
-		for (i=0;i<nTotalSockets;i++)
+		for (i = 0; i < nTotalSockets; i++)
 		{
 			SOCKETINFO* ptr = SocketInfoArray[i];
-			if (FD_ISSET(ptr->sock,&rset)) 
+			if (FD_ISSET(ptr->sock, &rset))//읽기소켓에 데이터가 있는지 확인
 			{
+				memset(ptr->buf, 0, sizeof(ptr->buf));
 				//데이터 받기
 				retval = recv(ptr->sock, (char*)ptr->buf, BUFSIZE, 0);
 				if (retval == SOCKET_ERROR)
@@ -145,14 +145,14 @@ int main()
 				WCHAR clientIP[40] = { 0, };
 				InetNtopW(AF_INET, &clientaddr.sin_addr, clientIP, sizeof(clientIP));
 
-				//ptr->buf[retval] = '\0';
-				ptr->buf[retval / 2] = '\0';
+				ptr->buf[retval / 2 + 1] = '\0';//글자 다음지점에 null문자를 세팅해서 출력이 용이하게 만든다.
+				//ptr->buf[retval / 2] = '\0';
 
 				wprintf(L"[TCP/%s:%d] %s\n", clientIP,
 					ntohs(clientaddr.sin_port), ptr->buf);
 
 			}
-			if (FD_ISSET(ptr->sock, &wset)) 
+			if (FD_ISSET(ptr->sock, &wset))//쓰기 소켓에 데이터가 있는지 확인
 			{
 				//데이터 보내기
 				retval = send(ptr->sock, ((char*)ptr->buf) + ptr->sendbytes,
@@ -187,7 +187,7 @@ BOOL AddSocketInfo(SOCKET sock)
 	}
 
 	SOCKETINFO* ptr = new SOCKETINFO;
-	if (ptr ==NULL) 
+	if (ptr == NULL)
 	{
 		wprintf(L"[오류] 메모리가 부족합니다!\n");
 		return FALSE;
@@ -200,6 +200,7 @@ BOOL AddSocketInfo(SOCKET sock)
 
 	return TRUE;
 };
+
 //소켓 정보 삭제
 void RemoveSocketInfo(int nIndex)
 {
@@ -211,9 +212,9 @@ void RemoveSocketInfo(int nIndex)
 	getpeername(ptr->sock, (SOCKADDR*)&clientaddr, &addrlen);
 	WCHAR clientIP[40] = { 0, };
 	InetNtopW(AF_INET, &clientaddr.sin_addr, clientIP, sizeof(clientIP));
-	wprintf(L"[TCP 서버 ] 클라잉너트 종료: IP 주소=%s, 포트 번호=%d\n",
-		clientIP,ntohs(clientaddr.sin_port));
-	
+	wprintf(L"[TCP 서버 ] 클라이언트 종료: IP 주소=%s, 포트 번호=%d\n",
+		clientIP, ntohs(clientaddr.sin_port));
+
 	closesocket(ptr->sock);
 	delete ptr;
 
