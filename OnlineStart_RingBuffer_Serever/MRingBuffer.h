@@ -92,17 +92,17 @@ public:
 	/////////////////////////////////////////////////////////////////////////
 	int Dequeue(char* chpData, int size)
 	{
-		int _DD_Size = DirectDequeueSize();
-		char* pDestTemp = chpData;
-
 		if (GetUseSize() < size)
 		{
 			return 0;
 		}
 
+		int _DD_Size = DirectDequeueSize();
+		char* pDestTemp = chpData;
+
 		if (_DD_Size >= size)
 		{
-			memcpy_s(chpData, size, _Front, size);
+			memcpy_s(pDestTemp, size, _Front, size);
 			MoveFront(size);
 			return size;
 		}

@@ -324,6 +324,15 @@ void RecvProc(Session* session)//받은 메세지처리 프로세스
 						{
 							_send_Move._Type = MOVE_SET;
 							_send_Move._Id = p_Id;
+							if (p_X < 0)
+								p_X = 0;
+							else if (p_X >= 80)
+								p_X = 80;
+
+							if (p_Y < 0)
+								p_Y = 0;
+							else if(p_Y >= 23)
+								p_Y = 23;
 							_send_Move._X = p_X;
 							_send_Move._Y = p_Y;
 							session->X= p_X;
@@ -411,8 +420,6 @@ void sendBroadCast(Session* session,char* _Msg)//특정 유저만 뺴고 보내�
 			}
 		}
 	}
-	
-
 };
 
 void Disconnect(Session* session)//연결 끊기 함수

@@ -21,8 +21,7 @@ int Session_Total = 0;
 //SOCKETINFO* SocketInfoArray[FD_SETSIZE];//소켓리스트
 
 //서버에 받아들이기 위한 리슨소켓
-SOCKET listen_sock;
-int nTotalSockets = 0;//총 소켓 개수
+SOCKET listen_sock;//총 소켓 개수
 
 int packet_count;//패킷 총개수
 
@@ -185,32 +184,10 @@ void NetWork()
 		}
 		
 	}
+
 	sendAllBuffer();//모든버퍼 데이터 전송
 
-	//Disconnect_Clean();//살아있지 않은 소켓을 모두 제거한다.
-	CList <Session*>::iterator _Session_it;
-	Session* _Session_Object;
-	for (_Session_it = Session_List.begin(); _Session_it != Session_List.end();)
-	{
-		_Session_Object = *_Session_it;
-		if (_Session_Object->live == false) //세션 특정객체가 죽어있다면
-		{
-			STAR_DELETE p_delete;//삭제 패킷을 생성한다.
-			p_delete._Type = DELETE_SET;
-			p_delete._Id = _Session_Object->Id;
-			sendBroadCast(nullptr, (char*)&p_delete);//생성된 패킷을 전달한다.
-
-			delete _Session_Object->recvBuf;
-			delete _Session_Object->sendBuf;
-			closesocket(_Session_Object->sock);
-			delete _Session_Object;//동적할당된 개체 제거
-			_Session_it = Session_List.erase(_Session_it);//그 개체를 리스트에서 제거한후 받은 이터레이터를 리턴받는다.;
-		}
-		else
-		{
-			++_Session_it;//살아있는 객체라면 다음 리스트로 넘어간다.
-		}
-	}
+	Disconnect_Clean();//살아있지 않은 소켓을 모두 제거한다.
 }
 
 void AcceptProc()//listen소켓 처리
@@ -227,23 +204,23 @@ void AcceptProc()//listen소켓 처리
 	{
 		return;//그냥 연결에러 발생이니까 뒷처리 할 필요 없이 리턴한다.
 	}
-
-	int AccteptTotal = nTotalSockets++;//여기서 계속 +하면서 ID 값을 새로 생성한다.
+	static int nTotalSockets = 0;
+	nTotalSockets++;//여기서 계속 +하면서 ID 값을 새로 생성한다.
 
 	//1.새로운 연결된 유저를 생성한다
 	Session* NewSession = new Session;
 	NewSession->sock = client_sock;//sock을 세팅하고
 	NewSession->recvBuf = new MRingBuffer;
 	NewSession->sendBuf = new MRingBuffer;
-	NewSession->Id = AccteptTotal;//ID세팅
+	NewSession->Id = nTotalSockets;//ID세팅
 	NewSession->X = _e_Player::_X;//X세팅
 	NewSession->Y = _e_Player::_Y;//Y세팅
 	NewSession->live = true;//세션 생존플래그 0이면 사망
 
-	////2.아이디 생성 패킷 생성후 접속한 사용자에게 전송한다.
+	//2.아이디 생성 패킷 생성후 접속한 사용자에게 전송한다.
 	STAR_ID _Id_Pack;
 	_Id_Pack._Type = ID_SET;
-	_Id_Pack._Id = AccteptTotal;
+	_Id_Pack._Id = nTotalSockets;
 	sendUniCast(NewSession, (char*)&_Id_Pack);//나 자신에게 별을 생성해서 전송한다.
 	
 	//3.현재 리스트에 있는 유저들을 전부 전달한다.
@@ -262,12 +239,12 @@ void AcceptProc()//listen소켓 처리
 	Session_List.push_back(NewSession);//생선된 세션을 세션리스트에 넣는다.
 
 	////4.생성된 별 패킷을 모든 사용자에게 전달한다.
-	STAR_CREATE _Cre_Pack;
-	_Cre_Pack._Type = CREATE_SET;
-	_Cre_Pack._Id = NewSession->Id;
-	_Cre_Pack._X = _X;
-	_Cre_Pack._Y = _Y;
-	sendBroadCast(nullptr, (char*)&_Cre_Pack);//연결된 유저 전부에게 전송한다.
+	STAR_CREATE _Cre_NewSession;
+	_Cre_NewSession._Type = CREATE_SET;
+	_Cre_NewSession._Id = NewSession->Id;
+	_Cre_NewSession._X = _X;
+	_Cre_NewSession._Y = _Y;
+	sendBroadCast(nullptr, (char*)&_Cre_NewSession);//연결된 유저 전부에게 전송한다.
 };
 
 void RecvProc(Session* session)//받은 메세지처리 프로세스
@@ -279,13 +256,14 @@ void RecvProc(Session* session)//받은 메세지처리 프로세스
 	int buffer[4];
 
 	char* buf[1000];
-
+	int recvbuflen = 1000;
 	//while (true)
 	//{
 		memset(buffer, 0, sizeof(buffer));//버퍼 clean
+		memset(buf, 0, sizeof(buf));//버퍼 clean
 
 		//retRecv = recv(tmpSesion->sock, (char*)buffer, sizeof(buffer), 0);//버퍼에서 16바이트씩 뜯어오기
-		retRecv = recv(tmpSesion->sock, (char*)buf, sizeof(buf), 0);//버퍼에서 온만큼 뜯어오기
+		retRecv = recv(tmpSesion->sock, (char*)buf, recvbuflen, 0);//버퍼에서 온만큼 뜯어오기
 		
 		if (retRecv == SOCKET_ERROR)//소켓 자체에 문제가 생겼다는 뜻이므로
 		{
@@ -310,18 +288,23 @@ void RecvProc(Session* session)//받은 메세지처리 프로세스
 			return;//소켓 에러가 발생한것이므로 할필요가 없다.
 		}
 		
-		tmpSesion->recvBuf->Enqueue((char*)buf, retRecv);//받은 데이터를 전부 큐에 넣는다.
+		tmpSesion->recvBuf->Enqueue((char*)buf, retRecv);//받은 데이터를 크기만큼 전부 넣는다.
 
 			while (1)//반복문을 돌면서 패킷하나씩 처리한다.
 			{
-				if (tmpSesion->recvBuf->GetUseSize() < sizeof(STAR_ID))//쓸수있는 사이즈가 패킷사이즈보다 작다면 처리하던 과정을 종료한다.
+				//if (tmpSesion->recvBuf->GetUseSize() < sizeof(STAR_ID))//쓸수있는 사이즈가 패킷사이즈보다 작다면 처리하던 과정을 종료한다.
+				//{
+				//	break;
+				//}
+
+				int DequeueSize;
+				DequeueSize = tmpSesion->recvBuf->Dequeue((char*)buffer, sizeof(STAR_ID));//패킷 크기만큼 뜯어오기
+				
+				if (DequeueSize <= 0)
 				{
 					break;
 				}
 
-				int DequeueSize;
-				DequeueSize = tmpSesion->recvBuf->Dequeue((char *)buffer, sizeof(STAR_ID));//패킷 크기만큼 뜯어오기
-				
 				int p_Type = buffer[0];//Type
 				int p_Id = buffer[1];//ID
 				int p_X = buffer[2];//_X
@@ -349,8 +332,9 @@ void RecvProc(Session* session)//받은 메세지처리 프로세스
 									break;//브레이크
 								}
 							}
+							break;
 						}
-						break;//_STAR_MOVE break;
+						//break;//_STAR_MOVE break;
 					}
 			}
 
@@ -373,20 +357,20 @@ void sendAllBuffer()
 
 		MRingBuffer* mRing = (*session_it)->sendBuf;
 		
-		int sendbuf_use = mRing->GetUseSize();
+		int sendbuf_use = (*session_it)->sendBuf->GetUseSize();
 		
-		if (sendbuf_use <= 0 )//카운트가 0 이상이 아니라면 보내지 않을 패킷
-		{
-			continue;
-		}
+		//if (sendbuf_use <= 0 )//카운트가 0 이상이 아니라면 보내지 않을 패킷
+		//{
+		//	continue;
+		//}
 
 		memset(buffer, 0, sizeof(buffer));//버퍼 초기화
-		retBro = mRing->Dequeue(buffer,sendbuf_use);//버퍼 크기만큼 가져오기
+		retBro = (*session_it)->sendBuf->Dequeue(buffer,sendbuf_use);//버퍼 크기만큼 가져오기
 
-		if (retBro != sendbuf_use)
-		{
-			continue;//크기차이로인한 패킷꼬임 오류
-		}
+		//if (retBro != sendbuf_use)
+		//{
+		//	continue;//크기차이로인한 패킷꼬임 오류
+		//}
 
 		//값이 같지 않다면 보내야하는 녀석들이기 때문에 전송한다.
 		//받은 크기만큼 세션에 전송한다.
@@ -404,8 +388,8 @@ void sendAllBuffer()
 			}
 
 			if (wsaError != 10035
-				&& wsaError != 10054
-				&& wsaError != WSAEWOULDBLOCK)//이에러가 아니라면 로그저장한다.
+				|| wsaError != 10054
+				|| wsaError != WSAEWOULDBLOCK)//이에러가 아니라면 로그저장한다.
 			{
 				char buff[200];
 				memset(buff, 0, sizeof(buff));
@@ -437,14 +421,14 @@ void sendBroadCast(Session* session, char* _Msg)//특정 유저만 뺴고 보내
 	//모든 리스트를돌면서 확인한다.
 	for (auto session_it = Session_List.begin(); session_it != Session_List.end(); ++session_it)
 	{
-		if ((*session_it)->live == false)
-		{
-			continue;//죽어있는패킷한테는안보낸다.
-		}
-
 		if (stmp != nullptr && stmp->Id == (*session_it)->Id)//값이 같다면 이녀석은 보내지 않을녀석이니 캔슬한다.
 		{
 			continue;
+		}
+
+		if ((*session_it)->live == false)
+		{
+			continue;//죽어있는패킷한테는안보낸다.
 		}
 
 		(*session_it)->sendBuf->Enqueue(_Msg, sizeof(STAR_ID));//안들어가면 안들어가는데로 별상관없음 버퍼가 꽉찬거니까
@@ -482,8 +466,10 @@ void Disconnect_Clean()//안정성을 위해 디스커넥트된 개체를 네트
 			p_delete._Id = _Session_Object->Id;
 			sendBroadCast(nullptr, (char*)&p_delete);//생성된 패킷을 전달한다.
 			
-			_Session_Object->recvBuf->Free();
-			_Session_Object->sendBuf->Free();//내부 버퍼 Free시키기
+			//_Session_Object->recvBuf->Free();
+			//_Session_Object->sendBuf->Free();//내부 버퍼 Free시키기
+			delete _Session_Object->recvBuf;
+			delete _Session_Object->sendBuf;
 			closesocket(_Session_Object->sock);
 			delete _Session_Object;//동적할당된 개체 제거
 			_Session_it = Session_List.erase(_Session_it);//그 개체를 리스트에서 제거한후 받은 이터레이터를 리턴받는다.;
