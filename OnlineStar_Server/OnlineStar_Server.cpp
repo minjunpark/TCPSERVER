@@ -245,15 +245,15 @@ void AcceptProc()//listen소켓 처리
 	for (auto _Session_it = Session_List.begin();
 		_Session_it != Session_List.end(); ++_Session_it)
 	{
-		//if ((*_Session_it)->live==true) 
-		//{
+		if ((*_Session_it)->live==true) 
+		{
 			STAR_CREATE _Cre_Pack;
 			_Cre_Pack._Type = CREATE_SET;
 			_Cre_Pack._Id = (*_Session_it)->Id;
 			_Cre_Pack._X = (*_Session_it)->X;
 			_Cre_Pack._Y = (*_Session_it)->Y;
 			sendUniCast(NewSession, (char*)&_Cre_Pack);
-		//}
+		}
 	}
 
 	Session_List.push_back(NewSession);//생선된 세션을 세션리스트에 넣는다.

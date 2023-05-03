@@ -300,7 +300,7 @@ void RecvProc(Session* session)//받은 메세지처리 프로세스
 				int DequeueSize;
 				DequeueSize = tmpSesion->recvBuf->Dequeue((char*)buffer, sizeof(STAR_ID));//패킷 크기만큼 뜯어오기
 				
-				if (DequeueSize <= 0)
+				if (DequeueSize <= 16)
 				{
 					break;
 				}
