@@ -129,6 +129,8 @@
   <ItemGroup>
     <ClCompile Include="Console.cpp" />
     <ClCompile Include="main.cpp" />
+    <ClCompile Include="main2.cpp" />
+    <ClCompile Include="TRingBuffer.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="CList.h" />
@@ -136,6 +138,7 @@
     <ClInclude Include="MRingBuffer.h" />
     <ClInclude Include="Packet_Struct.h" />
     <ClInclude Include="Server_define.h" />
+    <ClInclude Include="TRingBuffer.h" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">

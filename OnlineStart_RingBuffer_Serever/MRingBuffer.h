@@ -4,8 +4,8 @@
 class MRingBuffer
 {
 private:
-	char* _Start;
-	char* _End;
+	char* _Start;//시작 포인터
+	char* _End;//끝 포인터
 	char* _Rear;//쓰기포인터
 	char* _Front;//읽기포인터
 
@@ -16,6 +16,7 @@ public:
 	{
 		_RingBufferSize = 10000;
 		_Start = (char*)malloc(_RingBufferSize);//기본크기 10000
+		//_Start = new char[_RingBufferSize];//기본크기 10000
 		_End = _Start + _RingBufferSize;
 		_Front = _Start;
 		_Rear = _Start;
@@ -23,23 +24,28 @@ public:
 	MRingBuffer(int iBufferSize)
 	{
 		_RingBufferSize = iBufferSize;
-		_Start = (char*)malloc(_RingBufferSize);
+		_Start = (char*)malloc(_RingBufferSize);//기본크기
+		//_Start = new char[_RingBufferSize];
 		_End = _Start + _RingBufferSize;
 		_Front = _Start;
 		_Rear = _Start;
 	};
 	//소멸자
-	//~MRingBuffer()
-	//{
-	//	//ClearBuffer();//모든데이터 클리어
-	//	free(_Start);//사용버퍼 힙에서 제거
-	//};
-
-	void Free()
+	~MRingBuffer()
 	{
-		free(_Start);
-	}
+		printf("\n");
+		printf("_Start %d\n",_Start);
+		printf("_End %d\n", _End);
+		printf("_Rear %d\n", _Rear);
+		printf("_Front %d\n", _Front);
+		printf("_RingBufferSize %d\n", _RingBufferSize);
 
+		//free(_Start);
+		//delete[] _Start;
+		//RingBufferFree();//사용버퍼 힙에서 제거
+	};
+
+	//버퍼사이즈크기
 	int GetBufferSize()
 	{
 		return _End - _Start - 1;
@@ -54,14 +60,13 @@ public:
 	/////////////////////////////////////////////////////////////////////////
 	int Enqueue(const char* chpData, int size)
 	{
-		
-		int _DE_Size = DirectEnqueueSize();//함수호출 최소화
-		const char* temp = chpData;
-
-		if (GetFreeSize() < size)
+		if (GetFreeSize() < size || size < 0)
 		{
 			return 0;
 		}
+
+		int _DE_Size = DirectEnqueueSize();//함수호출 최소화
+		const char* temp = chpData;
 
 		if (_DE_Size >= size)
 		{
@@ -70,7 +75,7 @@ public:
 			MoveRear(size);
 			return size;
 		}
-		
+
 
 		memcpy_s(_Rear, _DE_Size, temp, _DE_Size);
 		//memcpy(_Rear, temp, directEnqueueSize);
@@ -92,7 +97,7 @@ public:
 	/////////////////////////////////////////////////////////////////////////
 	int Dequeue(char* chpData, int size)
 	{
-		if (GetUseSize() < size)
+		if (GetUseSize() < size || size < 0)
 		{
 			return 0;
 		}
@@ -106,7 +111,7 @@ public:
 			MoveFront(size);
 			return size;
 		}
-		
+
 		memcpy_s(pDestTemp, _DD_Size, _Front, _DD_Size);
 		MoveFront(_DD_Size);
 		int remainSize = size - _DD_Size;
@@ -125,12 +130,13 @@ public:
 	/////////////////////////////////////////////////////////////////////////
 	int Peek(char* chpData, int size)
 	{
-		int _DD_Size = DirectDequeueSize();
-
-		if (GetFreeSize() < size) 
+		if (GetUseSize() < size || size < 0)
 		{
 			return 0;
 		}
+
+		int _DD_Size = DirectDequeueSize();
+
 		if (_DD_Size >= size)
 		{
 			memcpy_s(chpData, size, _Front, size);
@@ -138,7 +144,6 @@ public:
 		}
 		char* pFrontTemp = _Front;
 		char* pDestTemp = chpData;
-		
 
 		memcpy_s(pDestTemp, _DD_Size, _Front, _DD_Size);
 		MoveFront(_DD_Size);
@@ -162,7 +167,7 @@ public:
 
 		//memcpy_s(resize_Buffer, _Buffer_Size, _Buffer_Start, _Buffer_Size);//버퍼를 그대로 복사한다
 		//
-
+		return;
 	};
 
 	/////////////////////////////////////////////////////////////////////////

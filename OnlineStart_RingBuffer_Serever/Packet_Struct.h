@@ -1,5 +1,6 @@
 #include "Server_define.h"
-#include "MRingBuffer.h"
+#include "TRingBuffer.h"
+//#include "MRingBuffer.h"
 //패킷프로토콜 - 패킷은 16바이트 고정
 //
 //ID할당(0)		Type(4Byte) | ID(4Byte) | 안씀(4Byte) | 안씀(4Byte)
@@ -33,8 +34,8 @@ enum _e_Player
 struct Session
 {
 	SOCKET sock;
-	MRingBuffer* recvBuf;
-	MRingBuffer* sendBuf;
+	TRingBuffer* recvBuf;
+	TRingBuffer* sendBuf;
 	int Id;
 	char* IP;
 	int Port;

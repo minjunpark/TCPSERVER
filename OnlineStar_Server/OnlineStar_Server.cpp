@@ -64,6 +64,7 @@ SOCKET client_sock;
 SOCKADDR_IN clientaddr;
 int addrlen;
 FD_SET rset;
+FD_SET wset;
 
 timeval times;
 
@@ -152,6 +153,7 @@ void NetWork()
 	
 	//네트워킹 작업
 	FD_ZERO(&rset);//rset을 밀어버려서 초기화
+	FD_ZERO(&wset);
 	FD_SET(listen_sock, &rset);//리슨소켓을 rset소켓에 세팅한다
 
 	for (auto session_it = Session_List.begin(); session_it != Session_List.end(); ++session_it)
@@ -182,29 +184,10 @@ void NetWork()
 				RecvProc(*session_it);
 			}
 		}
+
+		Disconnect_Clean();//연결이 끊긴 녀석들을 모두제거한다.
 	}
 
-	//Disconnect_Clean();//살아있지 않은 소켓을 모두 제거한다.
-	CList <Session*>::iterator _Session_it;
-	Session* _Session_Object;
-	for (_Session_it = Session_List.begin(); _Session_it != Session_List.end();)
-	{
-		_Session_Object = *_Session_it;
-		if (_Session_Object->live == false) //세션 특정객체가 죽어있다면
-		{
-			STAR_DELETE p_delete;//삭제 패킷을 생성한다.
-			p_delete._Type = DELETE_SET;
-			p_delete._Id = _Session_Object->Id;
-			sendBroadCast(nullptr, (char*)&p_delete);//생성된 패킷을 전달한다.
-			//closesocket(_Session_Object->sock);
-			//delete _Session_Object;//동적할당된 개체 제거
-			_Session_it = Session_List.erase(_Session_it);//그 개체를 리스트에서 제거한후 받은 이터레이터를 리턴받는다.;
-		}
-		else
-		{
-			++_Session_it;//살아있는 객체라면 다음 리스트로 넘어간다.
-		}
-	}
 }
 
 void AcceptProc()//listen소켓 처리
@@ -444,7 +427,7 @@ void Disconnect_Clean()//안정성을 위해 디스커넥트된 개체를 네트
 	for (_Session_it = Session_List.begin(); _Session_it != Session_List.end();)
 	{
 		_Session_Object = *_Session_it;
-		if (_Session_Object->live == false) //세션 특정객체가 죽어있다면
+		if (_Session_Object->live != true) //세션 특정객체가 죽어있다면
 		{
 			STAR_DELETE p_delete;//삭제 패킷을 생성한다.
 			p_delete._Type = DELETE_SET;
