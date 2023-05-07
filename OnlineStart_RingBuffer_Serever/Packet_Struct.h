@@ -1,6 +1,3 @@
-#include "Server_define.h"
-#include "TRingBuffer.h"
-//#include "MRingBuffer.h"
 //패킷프로토콜 - 패킷은 16바이트 고정
 //
 //ID할당(0)		Type(4Byte) | ID(4Byte) | 안씀(4Byte) | 안씀(4Byte)
@@ -12,14 +9,6 @@
 //
 //
 //	* 메시지는 메시지 마다 구조체를 만들어서 사용합니다.
-
-//소켓저장을 위한 구조체와 변수
-//struct SOCKETINFO
-//{
-//	SOCKET sock;
-//	int recvbytes;
-//	int sendbytes;
-//};
 
 enum _e_Player
 {
@@ -44,26 +33,27 @@ struct Session
 	bool live;//세션 생존플래그 0이면 사망 아니면 생존
 };
 
-//ID생성 후 전송
+//ID 생성패킷
 struct STAR_ID{
 	int _Type;
 	int _Id;
-	int temp[2];
+	int temp[2];//16바이트 보장을 위해 허수 int 2개
 };
 
+//별 생성 패킷 4가지를 모두 채워서 유저에게 전송한다.
 struct STAR_CREATE {
 	int _Type;
 	int _Id;
 	int _X;
 	int _Y;
 };
-
+//별 삭제 패킷 타입과 아이디만 전송해서 플레이어 클라이언트에서 별을 제거한다.
 struct STAR_DELETE {
 	int _Type;
 	int _Id;
 	int temp[2];
 };
-
+//별 이동패킷 타입아이디 _X _Y를 전송해 클라이언트에게 알린다.
 struct STAR_MOVE {
 	int _Type;
 	int _Id;

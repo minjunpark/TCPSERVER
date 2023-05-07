@@ -3,8 +3,8 @@
 
 TRingBuffer::TRingBuffer()//디폴트 버퍼계산 10000바이트를 기본으로한다
 {
-	_Start = NULL;
-	if (NULL != _Start)
+	_Start = nullptr;
+	if (nullptr != _Start)
 		delete[] _Start;
 	_BufferSize = 10000;
 	_Front = 0;
@@ -14,26 +14,27 @@ TRingBuffer::TRingBuffer()//디폴트 버퍼계산 10000바이트를 기본으로한다
 
 TRingBuffer::TRingBuffer(int iBufferSize)//들어온 크기만큼 버퍼를 생성 0이하면 생성을 애초에 안한다.
 {
-	_Start = NULL;
-	if (NULL != _Start)
+	_Start = nullptr;
+	if (nullptr != _Start)
 		delete[] _Start;
 
-	if (iBufferSize >= 0)
+	if (iBufferSize <= 0)
 	{
 		return;
 	}
+
 	_BufferSize = iBufferSize;
 	_Front = 0;
 	_Rear = 0;
-	_Start = new char[iBufferSize];
+	_Start = new char[_BufferSize];
 }
 
 TRingBuffer::~TRingBuffer()//버퍼 소멸자
 {
-	if (NULL != _Start)
+	if (nullptr != _Start)
 		delete[] _Start;
 	else {
-		_Start = NULL;
+		_Start = nullptr;
 	}
 	_BufferSize = 0;
 
@@ -65,7 +66,7 @@ void TRingBuffer::Resize(int size) {
 
 int	TRingBuffer::GetBufferSize(void)
 {
-	if (NULL != _Start)
+	if (_Start != nullptr)
 	{
 		return _BufferSize - BLANK_SIZE;
 	}
@@ -150,31 +151,33 @@ int TRingBuffer::DirectEnqueueSize(void)
 /////////////////////////////////////////////////////////////////////////
 int TRingBuffer::Enqueue(char* chpData, int iSize)
 {
-	int iWrite;
+	int iRear;
 
 	if (GetFreeSize() < iSize)
 	{
 		return 0;
-		//	iSize = GetFreeSize();
 	}
 
-	if (0 >= iSize)
-		return 0;
-
-	if (_Front <= _Rear)
+	if (iSize <= 0)//논블로킹 소켓인경우 -1이 오는 경우가 있기 때문에 미리 대비
 	{
-		iWrite = _BufferSize - _Rear;
+		return 0;
+	}
 
-		if (iWrite >= iSize)
+	if (_Front <= _Rear)//크기가 front 보다 작다면
+	{
+		iRear = _BufferSize - _Rear;
+
+		if (iRear >= iSize)
 		{
 			memcpy(_Start + _Rear, chpData, iSize);
+			//memcpy_s(chpData, iSize, _Start + _Rear, iSize);
 			_Rear += iSize;
 		}
 		else
 		{
-			memcpy(_Start + _Rear, chpData, iWrite);
-			memcpy(_Start, chpData + iWrite, iSize - iWrite);
-			_Rear = iSize - iWrite;
+			memcpy(_Start + _Rear, chpData, iRear);
+			memcpy(_Start, chpData + iRear, iSize - iRear);
+			_Rear = iSize - iRear;
 		}
 	}
 	else
@@ -183,6 +186,14 @@ int TRingBuffer::Enqueue(char* chpData, int iSize)
 		_Rear += iSize;
 	}
 
+	//if (_Rear == _BufferSize)
+	//{
+	//	_Rear = 0;
+	//}
+	//else 
+	//{
+	//	_Rear = _Rear;
+	//}
 	_Rear = _Rear == _BufferSize ? 0 : _Rear;
 
 	return iSize;
@@ -195,13 +206,18 @@ int TRingBuffer::Enqueue(char* chpData, int iSize)
 /////////////////////////////////////////////////////////////////////////
 int TRingBuffer::Dequeue(char* chpDest, int iSize)
 {
-	int iRead;
+	int iFront;
 
-	if (GetUseSize() < iSize)
-		iSize = GetUseSize();
+	if (GetUseSize() < iSize)//요청한 사이즈가 꺼내올수 있는 크기보다 작다면
+	{
+		//return 0;//요청한 크기가 현재 있는 사이즈보다 크다면 그냥 0을 리턴하고 종료한다.
+		iSize = GetUseSize();//꺼낼수 있는 크기만큼 꺼내주기
+	}
 
-	if (0 >= iSize)
+	if (iSize <= 0)//논블로킹 소켓인경우 -1이 오는 경우가 있기 때문에 미리 대비
+	{
 		return 0;
+	}
 
 	if (_Front <= _Rear)
 	{
@@ -210,20 +226,22 @@ int TRingBuffer::Dequeue(char* chpDest, int iSize)
 	}
 	else
 	{
-		iRead = _BufferSize - _Front;
+		iFront = _BufferSize - _Front;
 
-		if (iRead >= iSize)
+		if (iFront >= iSize)
 		{
 			memcpy(chpDest, _Start + _Front, iSize);
 			_Front += iSize;
 		}
 		else
 		{
-			memcpy(chpDest, _Start + _Front, iRead);
-			memcpy(chpDest + iRead, _Start, iSize - iRead);
-			_Front = iSize - iRead;
+			memcpy(chpDest, _Start + _Front, iFront);
+			memcpy(chpDest + iFront, _Start, iSize - iFront);
+			_Front = iSize - iFront;
 		}
 	}
+
+	//_Front = _Front == _BufferSize ? 0 : _Front;
 
 	return iSize;
 }
@@ -235,12 +253,17 @@ int TRingBuffer::Dequeue(char* chpDest, int iSize)
 /////////////////////////////////////////////////////////////////////////
 int	TRingBuffer::Peek(char* chpDest, int iSize)
 {
-	int iRead;
+	int iFront;
 	if (GetUseSize() < iSize)
-		iSize = GetUseSize();
+	{
+		//return 0;//요청한 크기가 현재 있는 사이즈보다 크다면 그냥 0을 리턴하고 종료한다.
+		iSize = GetUseSize();//꺼낼수 있는 크기만큼 꺼내주기
+	}
 
-	if (0 >= iSize)
+	if (iSize <= 0)//논블로킹 소켓인경우 -1이 오는 경우가 있기 때문에 미리 대비
+	{
 		return 0;
+	}
 
 	if (_Front <= _Rear)
 	{
@@ -248,35 +271,38 @@ int	TRingBuffer::Peek(char* chpDest, int iSize)
 	}
 	else
 	{
-		iRead = _BufferSize - _Front;
-		if (iRead >= iSize)
+		iFront = _BufferSize - _Front;
+		if (iFront >= iSize)
 		{
 			memcpy(chpDest, _Start + _Front, iSize);
 		}
 		else
 		{
-			memcpy(chpDest, _Start + _Front, iRead);
-			memcpy(chpDest + iRead, _Start, iSize - iRead);
+			memcpy(chpDest, _Start + _Front, iFront);
+			memcpy(chpDest + iFront, _Start, iSize - iFront);
 		}
 	}
 
 	return iSize;
 
 }
+
 /////////////////////////////////////////////////////////////////////////
 // 원하는 길이만큼 읽기위치 에서 삭제 / 쓰기 위치 이동
 //
 // Parameters: 없음.
 // Return: (int)이동크기
 /////////////////////////////////////////////////////////////////////////
-void TRingBuffer::MoveRear(int iSize)
+int TRingBuffer::MoveRear(int iSize)
 {
 	_Rear = (_Rear + iSize) % _BufferSize;
+	return _Rear;//이동된 _Rear포인터 위치를 리턴한다.
 }
 
-void TRingBuffer::MoveFront(int iSize)
+int TRingBuffer::MoveFront(int iSize)
 {
-	_Front = (_Front + iSize) % _BufferSize;
+	_Front = (_Front + iSize) % _BufferSize;//이동한 크기만큼 넣고
+	return _Front;//이동한 _Front포인터 위치를 리턴한다.
 }
 
 /////////////////////////////////////////////////////////////////////////

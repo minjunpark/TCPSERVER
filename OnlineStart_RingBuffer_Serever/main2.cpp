@@ -11,8 +11,10 @@
 #include <memory.h>
 #include <Windows.h>
 #include <time.h>
-#include "Packet_Struct.h"
+#include "TRingBuffer.h"
 #include "CList.h"
+#include "Server_define.h"
+#include "Packet_Struct.h"
 #include "Console.h"
 
 CList<Session*> Session_List;//접속한 유저리스트
@@ -54,8 +56,6 @@ void Render();
 void log_msg(char* msg);//로그저장용함수
 
 //로그저장용 텍스트파일 생성
-char log_FileName[60];// = "127.0.0.1";
-FILE* fp;
 
 
 //확인용 함수데이터 저장
@@ -77,18 +77,11 @@ int main()
 	times.tv_usec = 0;
 
 	//한글세팅
-	//setlocale(LC_ALL, "korean");
-	//_wsetlocale(LC_ALL, L"korean");
+	setlocale(LC_ALL, "korean");
+	_wsetlocale(LC_ALL, L"korean");
 
-	//로그저장용
-	time_t now = time(NULL);  //now에 현재 시간 저장
-	struct tm date;   //tm 구조체 타입의 날짜
 
-	localtime_s(&date, &now);  //date에 now의 정보를 저장
-	FILE* fp;
-	sprintf_s(log_FileName, sizeof(log_FileName), "Log_%02d_%02d_%02d.txt", date.tm_mday, date.tm_hour, date.tm_min);
-	fopen_s(&fp, log_FileName, "wb");
-	fclose(fp);
+
 
 	//원속 초기화
 	WSADATA wsa;
@@ -198,28 +191,28 @@ void NetWork()
 		
 	}
 	Disconnect_Clean();//연결이 끊긴 녀석들을 모두제거한다.
-	CList <Session*>::iterator _Session_it;
-	Session* _Session_Object;
-	for (_Session_it = Session_List.begin(); _Session_it != Session_List.end();)
-	{
-		_Session_Object = *_Session_it;
-		if (_Session_Object->live != true) //세션 특정객체가 죽어있다면
-		{
-			STAR_DELETE p_delete;//삭제 패킷을 생성한다.
-			p_delete._Type = DELETE_SET;
-			p_delete._Id = _Session_Object->Id;
-			sendBroadCast(nullptr, (char*)&p_delete);//생성된 패킷을 전달한다.
-			closesocket(_Session_Object->sock);
-			delete _Session_Object->recvBuf;
-			delete _Session_Object->sendBuf;
-			delete _Session_Object;//동적할당된 개체 제거
-			_Session_it = Session_List.erase(_Session_it);//그 개체를 리스트에서 제거한후 받은 이터레이터를 리턴받는다.;
-		}
-		else
-		{
-			++_Session_it;//살아있는 객체라면 다음 리스트로 넘어간다.
-		}
-	}
+	//CList <Session*>::iterator _Session_it;
+	//Session* _Session_Object;
+	//for (_Session_it = Session_List.begin(); _Session_it != Session_List.end();)
+	//{
+	//	_Session_Object = *_Session_it;
+	//	if (_Session_Object->live != true) //세션 특정객체가 죽어있다면
+	//	{
+	//		STAR_DELETE p_delete;//삭제 패킷을 생성한다.
+	//		p_delete._Type = DELETE_SET;
+	//		p_delete._Id = _Session_Object->Id;
+	//		sendBroadCast(nullptr, (char*)&p_delete);//생성된 패킷을 전달한다.
+	//		closesocket(_Session_Object->sock);
+	//		delete _Session_Object->recvBuf;
+	//		delete _Session_Object->sendBuf;
+	//		delete _Session_Object;//동적할당된 개체 제거
+	//		_Session_it = Session_List.erase(_Session_it);//그 개체를 리스트에서 제거한후 받은 이터레이터를 리턴받는다.;
+	//	}
+	//	else
+	//	{
+	//		++_Session_it;//살아있는 객체라면 다음 리스트로 넘어간다.
+	//	}
+	//}
 }
 
 void SendProc(Session* session)
@@ -408,12 +401,12 @@ void RecvProc(Session* session)//받은 메세지처리 프로세스
 					_send_Move._Id = p_Id;
 					if (p_X < 0)
 						p_X = 0;
-					else if (p_X >= 80)
+					else if (p_X >= SCREEN_WIDTH)
 						p_X = 80;
 
 					if (p_Y < 0)
 						p_Y = 0;
-					else if (p_Y >= 23)
+					else if (p_Y >= SCREEN_HEIGHT)
 						p_Y = 23;
 					_send_Move._X = p_X;
 					_send_Move._Y = p_Y;
@@ -647,7 +640,17 @@ void Sprite_Draw(int iX, int iY, char chSprite)
 
 void log_msg(char* msg)
 {
+	
+	char log_FileName[60];// = "127.0.0.1";
 	FILE* fp;
+	//로그저장용
+	time_t now = time(NULL);  //now에 현재 시간 저장
+	struct tm date;   //tm 구조체 타입의 날짜
+	localtime_s(&date, &now);  //date에 now의 정보를 저장
+
+	sprintf_s(log_FileName, sizeof(log_FileName), "Log_%02d_%02d_%02d.txt", date.tm_mday, date.tm_hour, date.tm_min);
+	fopen_s(&fp, log_FileName, "wb");//파일 생성
+	fclose(fp);
 
 	fopen_s(&fp, log_FileName, "a");
 	fprintf(fp, "%s\n", msg);
