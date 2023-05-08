@@ -153,7 +153,7 @@ void NetWork()
 	{
 		FD_SET((*session_it)->sock, &rset);//반응이 있는소켓을 전부 rset에 넣는다.
 
-		if ((*session_it)->sendBuf->GetUseSize() >= 0)//버퍼에 데이터가 있다면
+		if ((*session_it)->sendBuf->GetUseSize() > 0)//세션 버퍼에 보내야하는 데이터가 0이상이라면?
 		{
 			FD_SET((*session_it)->sock, &wset);
 		}
@@ -174,12 +174,12 @@ void NetWork()
 			AcceptProc();
 		}
 
-		//현재 세션리스트중에 반응이 있는 소켓이 있는지 확인한다.
+		//현재 세션리스트중에 반응이 있는 소켓이 있는지 확인하기위해 모든 리스트를 돌면서 확인한다.
 		for (auto session_it = Session_List.begin(); session_it != Session_List.end(); ++session_it)
 		{
-			if (FD_ISSET((*session_it)->sock, &rset))//반응가능한 소켓이 있다면
+			if (FD_ISSET((*session_it)->sock, &rset))//반응이 있는 읽기 소켓이 있다면?
 			{
-				RecvProc(*session_it);
+				RecvProc(*session_it);//Recv Proc를 실행한다.
 			}
 
 			if (FD_ISSET((*session_it)->sock, &wset))//반응가능한 쓰기소켓이 있다면
@@ -344,12 +344,6 @@ void RecvProc(Session* session)//받은 메세지처리 프로세스
 	{
 		int wsaError;//소켓에러값
 		wsaError = WSAGetLastError();
-		if (wsaError != WSAEWOULDBLOCK)//연결자체에 문제가 생겼다는 뜻이므로
-		{
-			//printf("retval error %d\n", retRecv);
-			Disconnect(tmpSesion);//연결종료처리
-			return;//송신버퍼가 비어있다는 뜻이므로 루프를 탈출한다.
-		}
 
 		if (wsaError != 10035
 			|| wsaError != 10054
@@ -359,6 +353,13 @@ void RecvProc(Session* session)//받은 메세지처리 프로세스
 			memset(buff, 0, sizeof(buff));
 			sprintf_s(buff, "retRecv Error = %d", wsaError);
 			log_msg(buff);
+		}
+
+		if (wsaError != WSAEWOULDBLOCK)//연결자체에 문제가 생겼다는 뜻이므로
+		{
+			//printf("retval error %d\n", retRecv);
+			Disconnect(tmpSesion);//연결종료처리
+			return;//송신버퍼가 비어있다는 뜻이므로 루프를 탈출한다.
 		}
 	}
 
@@ -402,12 +403,11 @@ void RecvProc(Session* session)//받은 메세지처리 프로세스
 					if (p_X < 0)
 						p_X = 0;
 					else if (p_X >= SCREEN_WIDTH)
-						p_X = 80;
-
+						p_X = SCREEN_WIDTH;
 					if (p_Y < 0)
 						p_Y = 0;
 					else if (p_Y >= SCREEN_HEIGHT)
-						p_Y = 23;
+						p_Y = SCREEN_HEIGHT;
 					_send_Move._X = p_X;
 					_send_Move._Y = p_Y;
 					session->X = p_X;
@@ -434,7 +434,7 @@ void sendUniCast(Session* session, char* _Msg)//특정유저에게만 보내기
 	{
 		return;//죽어있는패킷한테는안보낸다.
 	}
-	if (session->sendBuf->GetFreeSize() >= sizeof(STAR_ID))
+	if (session->sendBuf->GetFreeSize() >= sizeof(STAR_ID))//sendbuf에 16바이트 이상이 남아있다면 인큐시킨다.
 	{
 		retUni = session->sendBuf->Enqueue(_Msg, sizeof(STAR_ID));//안들어가면 안들어가는데로 별상관없음 버퍼가 꽉찬거니까
 		if (retUni != sizeof(STAR_ID))
@@ -462,7 +462,8 @@ void sendBroadCast(Session* session, char* _Msg)//특정 유저만 뺴고 보내기
 		{
 			continue;//죽어있는패킷한테는안보낸다.
 		}
-		if ((*session_it)->sendBuf->GetFreeSize() >= sizeof(STAR_ID))
+		//각세션의 센드버퍼에 enqueue시킨다.
+		if ((*session_it)->sendBuf->GetFreeSize() >= sizeof(STAR_ID))//sendbuf에 16바이트 이상이 남아있다면 인큐시킨다.
 		{
 			retBro = (*session_it)->sendBuf->Enqueue(_Msg, sizeof(STAR_ID));//안들어가면 안들어가는데로 별상관없음 버퍼가 꽉찬거니까
 			if (retBro != sizeof(STAR_ID))
@@ -470,7 +471,7 @@ void sendBroadCast(Session* session, char* _Msg)//특정 유저만 뺴고 보내기
 				Disconnect((*session_it));
 			}
 		}
-		//각세션의 센드버퍼에 enqueue시킨다.
+		
 	}
 };
 
