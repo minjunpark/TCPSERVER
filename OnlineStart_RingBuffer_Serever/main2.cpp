@@ -79,10 +79,7 @@ int main()
 	//한글세팅
 	setlocale(LC_ALL, "korean");
 	_wsetlocale(LC_ALL, L"korean");
-
-
-
-
+	
 	//원속 초기화
 	WSADATA wsa;
 	if (WSAStartup(MAKEWORD(2, 2), &wsa) != 0)
@@ -187,32 +184,8 @@ void NetWork()
 				SendProc(*session_it);
 			}
 		}
-
-		
 	}
 	Disconnect_Clean();//연결이 끊긴 녀석들을 모두제거한다.
-	//CList <Session*>::iterator _Session_it;
-	//Session* _Session_Object;
-	//for (_Session_it = Session_List.begin(); _Session_it != Session_List.end();)
-	//{
-	//	_Session_Object = *_Session_it;
-	//	if (_Session_Object->live != true) //세션 특정객체가 죽어있다면
-	//	{
-	//		STAR_DELETE p_delete;//삭제 패킷을 생성한다.
-	//		p_delete._Type = DELETE_SET;
-	//		p_delete._Id = _Session_Object->Id;
-	//		sendBroadCast(nullptr, (char*)&p_delete);//생성된 패킷을 전달한다.
-	//		closesocket(_Session_Object->sock);
-	//		delete _Session_Object->recvBuf;
-	//		delete _Session_Object->sendBuf;
-	//		delete _Session_Object;//동적할당된 개체 제거
-	//		_Session_it = Session_List.erase(_Session_it);//그 개체를 리스트에서 제거한후 받은 이터레이터를 리턴받는다.;
-	//	}
-	//	else
-	//	{
-	//		++_Session_it;//살아있는 객체라면 다음 리스트로 넘어간다.
-	//	}
-	//}
 }
 
 void SendProc(Session* session)
@@ -290,7 +263,6 @@ void AcceptProc()//listen소켓 처리
 	_Id_Pack._Type = ID_SET;
 	_Id_Pack._Id = AccteptTotal;
 	sendUniCast(NewSession, (char*)&_Id_Pack);//나 자신에게 별을 생성해서 전송한다.
-
 
 	CList <Session*>::iterator _Session_it;
 	//CBaseObject* _Des_Object;
