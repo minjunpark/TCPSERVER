@@ -154,6 +154,15 @@ void Logic()
 			continue;
 		}
 
+		//범위를 초과하고 있는 녀석은 더이상 로직에서 움직이게 하지 않는다.
+		if ((*_Session_it)->_X < dfRANGE_MOVE_LEFT 
+			|| (*_Session_it)->_X > dfRANGE_MOVE_RIGHT
+			|| (*_Session_it)->_Y < dfRANGE_MOVE_TOP
+			|| (*_Session_it)->_Y > dfRANGE_MOVE_BOTTOM)
+		{
+			continue;
+		}
+
 		//살아있으면서 움직이고 있는 세션이라면 원하는 방향으로 값을 이동시킨다.
 		switch ((*_Session_it)->_Direction)
 		{
@@ -397,30 +406,6 @@ void RecvProc(Session* session)//유저가 데이터를 보내왔을때
 				Disconnect(tmpSesion);
 				return;
 			}
-
-			//if (tmpSesion->_X + dfERROR_RANGE < st_CS_MOVE_START._X)//지금 X위치값 +50보다 들어온 위치값이 크다면 이동오류
-			//{
-			//	Disconnect(tmpSesion);
-			//	return;
-			//}
-			//	
-			//if (tmpSesion->_X - dfERROR_RANGE > st_CS_MOVE_START._X)//지금 X위치값 +50보다 들어온 위치값이 크다면 이동오류
-			//{
-			//	Disconnect(tmpSesion);
-			//	return;
-			//}
-
-			//if (tmpSesion->_Y + dfERROR_RANGE < st_CS_MOVE_START._Y)//지금 X위치값 +50보다 들어온 위치값이 크다면 이동오류
-			//{
-			//	Disconnect(tmpSesion);
-			//	return;
-			//}
-
-			//if (tmpSesion->_Y - dfERROR_RANGE > st_CS_MOVE_START._Y)//지금 X위치값 +50보다 들어온 위치값이 크다면 이동오류
-			//{
-			//	Disconnect(tmpSesion);
-			//	return;
-			//}
 
 			if (tmpSesion->_X + dfERROR_RANGE < st_CS_MOVE_START._X
 				|| tmpSesion->_X - dfERROR_RANGE > st_CS_MOVE_START._X//지금 X위치값 -50보다 들어온 위치값이 작다면 이동오류
