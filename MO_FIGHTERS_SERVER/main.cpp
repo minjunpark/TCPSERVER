@@ -15,7 +15,6 @@
 #include "CList.h"
 #include "Server_Enum.h"
 #include "Packet_Enum.h"
-
 #define df_LOG//로그 켜고싶으면 세팅
 
 using namespace std;
@@ -27,8 +26,10 @@ void init_sock();
 void AcceptProc();//접속유저가 새로 생겼을때
 void RecvProc(Session* session);//유저가 데이터를 보내왔을때
 void SendProc(Session* session);//유저에게 데이터를 보낼때
-void sendUniCast(Session* session, char* _Msg, int size);//특정유저에게만 보내기
-void sendBroadCast(Session* session, char* _Msg, int size);//모든 유저에게 보내기
+void sendUniCast(Session* session, char* _header, char* _Msg, int size);
+void sendBroadCast(Session* session, char* _header, char* _Msg, int size);
+
+bool PacketProc();
 
 void Disconnect(Session* session);
 void Disconnect_Clean();
@@ -48,6 +49,8 @@ SOCKET listen_sock;
 FD_SET rset;
 FD_SET wset;
 int User_Id_Count = 1;
+
+#include "st_Message_Fun.h"
 
 static DWORD frameDelta = 0;
 static DWORD lastTime = GetTickCount64();
@@ -238,6 +241,38 @@ void Logic()
 	}
 };
 
+bool PacketProc(Session* pSession, BYTE byPacketType, char* pPacket)
+{
+	switch (byPacketType)
+	{
+		case dfPACKET_SC_CREATE_MY_CHARACTER:
+			netPacketProc_SC_CREATE_MY_CHARACTER(pSession, pPacket);
+			break;
+		case dfPACKET_SC_CREATE_OTHER_CHARACTER:
+			//일단 보류함 Accept에서 직접보내는중
+			break;
+		case dfPACKET_SC_DELETE_CHARACTER:
+			netPacketProc_DELETE_CHARACTER(pSession, pPacket);
+			break;
+		case dfPACKET_CS_MOVE_START:
+			netPacketProc_MOVE_START(pSession, pPacket);
+			break;
+		case dfPACKET_CS_MOVE_STOP:
+			netPacketProc_MOVE_STOP(pSession, pPacket);
+			break;
+		case dfPACKET_CS_ATTACK1:
+			netPacketProc_ATTACK1(pSession, pPacket);
+			break;
+		case dfPACKET_CS_ATTACK2:
+			netPacketProc_ATTACK2(pSession, pPacket);
+			break;
+		case dfPACKET_CS_ATTACK3:
+			netPacketProc_ATTACK3(pSession, pPacket);
+			break;
+	}
+	return true;
+}
+
 void AcceptProc()
 {
 	SOCKET client_sock;
@@ -271,22 +306,9 @@ void AcceptProc()
 	NewSession->_Y = defualt_Y_SET;//Y세팅
 	NewSession->_Live = true;//세션 생존플래그 0이면 사망
 	NewSession->_HP = df_HP;
-
-	//2. 생성된유저에게 만들어졌다고 알린다.
-	st_dfPACKET_header st_my_header;
-	st_my_header.byCode = PACKET_CODE;
-	st_my_header.bySize = sizeof(st_dfPACKET_SC_CREATE_MY_CHARACTER);
-	st_my_header.byType = dfPACKET_SC_CREATE_MY_CHARACTER;
-
-	st_dfPACKET_SC_CREATE_MY_CHARACTER st_my_create;
-	st_my_create._Id = AccteptTotal;
-	st_my_create._Direction = default_Direction;
-	st_my_create.HP = defualt_HP;
-	st_my_create._X = defualt_X_SET;
-	st_my_create._Y = defualt_Y_SET;
-
-	sendUniCast(NewSession, (char*)&st_my_header, sizeof(st_dfPACKET_header));
-	sendUniCast(NewSession, (char*)&st_my_create, sizeof(st_dfPACKET_SC_CREATE_MY_CHARACTER));
+	
+	//2.생성된 유저 데이터 나에게 전송하기
+	PacketProc(NewSession, dfPACKET_SC_CREATE_MY_CHARACTER, nullptr);
 
 	//3.현재 리스트에 있는 유저들을 생성한 유저에게 모두 전송한다.
 	for (auto _Session_it = Session_List.begin(); _Session_it != Session_List.end(); ++_Session_it)
@@ -304,12 +326,12 @@ void AcceptProc()
 			st_other_create._X = (*_Session_it)->_X;
 			st_other_create._Y = (*_Session_it)->_Y;
 			st_other_create.HP = (*_Session_it)->_HP;
-			sendUniCast(NewSession, (char*)&st_other_header, sizeof(st_dfPACKET_header));
-			sendUniCast(NewSession, (char*)&st_other_create, sizeof(st_dfPACKET_SC_CREATE_OTHER_CHARACTER));
+			sendUniCast(NewSession, (char*)&st_other_header,(char*)&st_other_create, sizeof(st_dfPACKET_SC_CREATE_OTHER_CHARACTER));
 		}
 	}
 
-	Session_List.push_back(NewSession);//생선된 세션을 세션리스트에 넣는다.
+	//4.생성된 세션 리스트에 넣기
+	Session_List.push_back(NewSession);
 
 	//5.생성된 나를 모든 유저에게 전달한다.
 	st_dfPACKET_header st_my_other_header;
@@ -324,11 +346,8 @@ void AcceptProc()
 	st_my_other_create._X = defualt_X_SET;
 	st_my_other_create._Y = defualt_Y_SET;
 
-	sendBroadCast(NewSession, (char*)&st_my_other_header, sizeof(st_dfPACKET_header));
-	sendBroadCast(NewSession, (char*)&st_my_other_create, sizeof(st_dfPACKET_SC_CREATE_OTHER_CHARACTER));
-#ifdef df_LOG
-	printf("Create Character # SessionID %d  X:%d Y:%d\n", AccteptTotal, defualt_X_SET, defualt_Y_SET);
-#endif
+	sendBroadCast(NewSession, (char*)&st_my_other_header,(char*)&st_my_other_create, sizeof(st_dfPACKET_SC_CREATE_OTHER_CHARACTER));
+	
 };//접속유저가 새로 생겼을때
 
 void RecvProc(Session* session)//유저가 데이터를 보내왔을때
@@ -339,6 +358,7 @@ void RecvProc(Session* session)//유저가 데이터를 보내왔을때
 	memset(buf, 0, sizeof(buf));//버퍼 clean
 	int retRecv;
 	retRecv = recv(tmpSesion->_Sock, (char*)buf, tmpSesion->_RecvBuf->GetFreeSize(), 0);//남아있는 Free사이즈만큼 긁어온다.
+	//retRecv = recv(tmpSesion->_Sock, (char*)tmpSesion->_RecvBuf->GetRearBufferPtr(), tmpSesion->_RecvBuf->GetFreeSize(), 0);//남아있는 Free사이즈만큼 긁어온다.
 
 	if (retRecv == SOCKET_ERROR)//소켓 자체에 문제가 생겼다는 뜻이므로
 	{
@@ -355,7 +375,7 @@ void RecvProc(Session* session)//유저가 데이터를 보내왔을때
 	else if (retRecv == 0)
 	{
 		int wsaError = WSAGetLastError();//소켓에러값
-		log_msg(wsaError);
+		//log_msg(wsaError);
 		if (wsaError != WSAEWOULDBLOCK)//연결자체에 문제가 생겼다는 뜻이므로
 		{
 			Disconnect(session);//연결종료처리
@@ -363,6 +383,8 @@ void RecvProc(Session* session)//유저가 데이터를 보내왔을때
 		}
 		return;
 	}
+	//tmpSesion->_RecvBuf->MoveRear(retRecv);
+
 	int retRing = tmpSesion->_RecvBuf->Enqueue((char*)buf, retRecv);//받은만큼 인큐한후
 
 	if (retRecv != retRing)
@@ -392,7 +414,7 @@ void RecvProc(Session* session)//유저가 데이터를 보내왔을때
 			break;
 		}
 		//헤더에서 읽어온 크기만큼 버퍼에 존재한다면?
-		tmpSesion->_RecvBuf->MoveFront(sizeof(st_dfPACKET_header));//헤더크기만큼 버퍼의 읽기포인터를 이동시킨다.
+		tmpSesion->_RecvBuf->MoveFront(sizeof(st_dfPACKET_header));//헤더크기만큼 버퍼의 읽기포인터를 이동시킨다.		
 
 		switch (st_recv_header.byType)//byType으로 판단한다.
 		{
@@ -401,45 +423,16 @@ void RecvProc(Session* session)//유저가 데이터를 보내왔을때
 		{
 			st_dfPACKET_CS_MOVE_START st_CS_MOVE_START;
 			retSwitchDeq = tmpSesion->_RecvBuf->Dequeue((char*)&st_CS_MOVE_START, st_recv_header.bySize);//사이즈만큼 디큐한다.
+
 			if (retSwitchDeq != st_recv_header.bySize)
 			{
 				Disconnect(tmpSesion);
 				return;
 			}
 
-			if (tmpSesion->_X + dfERROR_RANGE < st_CS_MOVE_START._X
-				|| tmpSesion->_X - dfERROR_RANGE > st_CS_MOVE_START._X//지금 X위치값 -50보다 들어온 위치값이 작다면 이동오류
-				|| tmpSesion->_Y + dfERROR_RANGE < st_CS_MOVE_START._Y//지금 Y위치값 +50보다 들어온 위치가 더 크다면 이동오류
-				|| tmpSesion->_Y - dfERROR_RANGE > st_CS_MOVE_START._Y)//지금 Y위치값 -50보다 들어온 위치가 더 작다면 이동오류
-			{
-				Disconnect(tmpSesion);
-				return;
-			}
+			PacketProc(tmpSesion, dfPACKET_CS_MOVE_START, (char*)&st_CS_MOVE_START);
 
-			//받은 데이터를 서버 세션리스트 값에 업데이트 시켜준다.
-			tmpSesion->_Direction = st_CS_MOVE_START._Direction;//바라보는 방향지정
-			tmpSesion->_Direction_check = ON_MOVE;//이동중 이라고 변경
-			tmpSesion->_X = st_CS_MOVE_START._X;//받은 크기값을 넣는다.
-			tmpSesion->_Y = st_CS_MOVE_START._Y;//받은 크기값을 넣는다.
-
-			//헤더설정
-			st_dfPACKET_header st_SC_MOVE_START_HAEDER;
-			st_SC_MOVE_START_HAEDER.byCode = PACKET_CODE;
-			st_SC_MOVE_START_HAEDER.bySize = sizeof(st_dfPACKET_SC_MOVE_START);
-			st_SC_MOVE_START_HAEDER.byType = dfPACKET_SC_MOVE_START;
-
-			//데이터설정
-			st_dfPACKET_SC_MOVE_START st_SC_MOVE_START;
-			st_SC_MOVE_START._Id = tmpSesion->_Id;//어떤 녀석인지 ID설정
-			st_SC_MOVE_START._Direction = tmpSesion->_Direction;//보는 방향지정
-			st_SC_MOVE_START._X = tmpSesion->_X;//위치X
-			st_SC_MOVE_START._Y = tmpSesion->_Y;//위치Y
-
-			sendBroadCast(tmpSesion, (char*)&st_SC_MOVE_START_HAEDER, sizeof(st_dfPACKET_header));
-			sendBroadCast(tmpSesion, (char*)&st_SC_MOVE_START, sizeof(st_dfPACKET_SC_MOVE_START));
-#ifdef df_LOG
-			printf("PACKET_MOVESTART # SessionID: %d / Direction:%d / X:%d / Y:%d\n", tmpSesion->_Id, tmpSesion->_Direction, tmpSesion->_X, tmpSesion->_Y);
-#endif
+			//tmpSesion->_RecvBuf->MoveFront(retSwitchDeq);
 		}
 		break;
 		case dfPACKET_CS_MOVE_STOP://정지
@@ -453,39 +446,8 @@ void RecvProc(Session* session)//유저가 데이터를 보내왔을때
 				return;
 			}
 
-			if (tmpSesion->_X + dfERROR_RANGE < st_CS_MOVE_STOP._X//지금 X위치값 +50보다 들어온 위치값이 크다면 이동오류
-				|| tmpSesion->_X - dfERROR_RANGE > st_CS_MOVE_STOP._X//지금 X위치값 -50보다 들어온 위치값이 작다면 이동오류
-				|| tmpSesion->_Y + dfERROR_RANGE < st_CS_MOVE_STOP._Y//지금 Y위치값 +50보다 들어온 위치가 더 크다면 이동오류
-				|| tmpSesion->_Y - dfERROR_RANGE > st_CS_MOVE_STOP._Y)//지금 Y위치값 -50보다 들어온 위치가 더 작다면 이동오류
-			{
-				Disconnect(tmpSesion);
-				return;
-			}
-
-			//받은 데이터를 서버 세션리스트 값에 업데이트 시켜준다.
-			tmpSesion->_Direction = st_CS_MOVE_STOP._Direction;//바라보는 방향지정
-			tmpSesion->_Direction_check = ON_STOP;//정지라고 값을 지정한다.
-			tmpSesion->_X = st_CS_MOVE_STOP._X;//받은 크기값을 넣는다.
-			tmpSesion->_Y = st_CS_MOVE_STOP._Y;//받은 크기값을 넣는다.
-
-			//헤더설정
-			st_dfPACKET_header st_SC_MOVE_STOP_HAEDER;
-			st_SC_MOVE_STOP_HAEDER.byCode = PACKET_CODE;
-			st_SC_MOVE_STOP_HAEDER.bySize = sizeof(st_dfPACKET_SC_MOVE_STOP);
-			st_SC_MOVE_STOP_HAEDER.byType = dfPACKET_SC_MOVE_STOP;
-
-			//데이터설정
-			st_dfPACKET_SC_MOVE_STOP st_SC_MOVE_STOP;
-			st_SC_MOVE_STOP._Id = tmpSesion->_Id;//어떤 녀석인지 ID설정
-			st_SC_MOVE_STOP._Direction = tmpSesion->_Direction;//보는 방향지정
-			st_SC_MOVE_STOP._X = tmpSesion->_X;//위치X
-			st_SC_MOVE_STOP._Y = tmpSesion->_Y;//위치Y
-
-			sendBroadCast(tmpSesion, (char*)&st_SC_MOVE_STOP_HAEDER, sizeof(st_dfPACKET_header));
-			sendBroadCast(tmpSesion, (char*)&st_SC_MOVE_STOP, sizeof(st_dfPACKET_SC_MOVE_STOP));
-#ifdef df_LOG
-			printf("PACKET_MOVESTOP # SessionID: %d / Direction:%d / X:%d / Y:%d\n", tmpSesion->_Id, tmpSesion->_Direction, tmpSesion->_X, tmpSesion->_Y);
-#endif
+			PacketProc(tmpSesion, dfPACKET_CS_MOVE_STOP, (char*)&st_CS_MOVE_STOP);
+			//tmpSesion->_RecvBuf->MoveFront(retSwitchDeq);
 		}
 		break;
 		case dfPACKET_CS_ATTACK1://공격
@@ -498,128 +460,8 @@ void RecvProc(Session* session)//유저가 데이터를 보내왔을때
 				return;
 			}
 
-			//받은 데이터를 서버 세션리스트 값에 업데이트 시켜준다.
-			tmpSesion->_Direction = st_CS_ATTACK1._Direction;//공격하는 방향
-			tmpSesion->_Direction_check = ON_STOP;//이동중 이라고 변경
-			tmpSesion->_X = st_CS_ATTACK1._X;//받은 크기값을 넣는다.
-			tmpSesion->_Y = st_CS_ATTACK1._Y;//받은 크기값을 넣는다.
-
-			//헤더설정
-			st_dfPACKET_header st_SC_ATTACK1_HAEDER;
-			st_SC_ATTACK1_HAEDER.byCode = PACKET_CODE;
-			st_SC_ATTACK1_HAEDER.bySize = sizeof(st_dfPACKET_SC_ATTACK1);
-			st_SC_ATTACK1_HAEDER.byType = dfPACKET_SC_ATTACK1;
-
-			//데이터설정
-			st_dfPACKET_SC_ATTACK1 st_SC_ATTACK1;
-			st_SC_ATTACK1._Id = tmpSesion->_Id;//어떤 녀석인지 ID설정
-			st_SC_ATTACK1._Direction = tmpSesion->_Direction;//보는 방향지정
-			st_SC_ATTACK1._X = tmpSesion->_X;//위치X
-			st_SC_ATTACK1._Y = tmpSesion->_Y;//위치Y
-
-			sendBroadCast(tmpSesion, (char*)&st_SC_ATTACK1_HAEDER, sizeof(st_dfPACKET_header));
-			sendBroadCast(tmpSesion, (char*)&st_SC_ATTACK1, sizeof(st_dfPACKET_SC_ATTACK1));
-
-			switch (tmpSesion->_Direction)
-			{
-				case dfPACKET_MOVE_DIR_LL:
-				{
-					for (auto session_it = Session_List.begin(); session_it != Session_List.end(); ++session_it)
-					{
-						if ((*session_it)->_Live == false)
-						{
-							continue;//죽어있는 패킷 무시
-						}
-
-						if (tmpSesion->_Id== (*session_it)->_Id)
-						{
-							continue;
-						}
-
-						if ((tmpSesion->_X - dfATTACK1_RANGE_X <= (*session_it)->_X
-							&& tmpSesion->_X >= (*session_it)->_X)
-
-							&& ((tmpSesion->_Y - dfATTACK1_RANGE_Y <= (*session_it)->_Y
-							&& tmpSesion->_Y >= (*session_it)->_Y)
-							|| (tmpSesion->_Y + dfATTACK1_RANGE_Y >= (*session_it)->_Y
-							&& tmpSesion->_Y <= (*session_it)->_Y)))//80범위 내에 존재하는 타겟이 있다면?
-						{
-							(*session_it)->_HP -= dfATTACK1_DAMAGE;//맞은 대상의 HP를 깎는다.
-
-							if ((*session_it)->_HP <= 0)
-							{
-								Disconnect((*session_it));//클라이언트가 죽었으므로 종료
-							}
-							else {
-								st_dfPACKET_header st_SC_DAMAGE_HEADER;
-								st_SC_DAMAGE_HEADER.byCode = PACKET_CODE;
-								st_SC_DAMAGE_HEADER.bySize = sizeof(st_dfPACKET_SC_DAMAGE);
-								st_SC_DAMAGE_HEADER.byType = dfPACKET_SC_DAMAGE;
-
-								st_dfPACKET_SC_DAMAGE st_SC_DAMAGE;
-								st_SC_DAMAGE.Hp = (*session_it)->_HP;
-								st_SC_DAMAGE._Attack_Id = tmpSesion->_Id;
-								st_SC_DAMAGE._Damage_Id = (*session_it)->_Id;
-
-								sendBroadCast(nullptr, (char*)&st_SC_DAMAGE_HEADER, sizeof(st_dfPACKET_header));
-								sendBroadCast(nullptr, (char*)&st_SC_DAMAGE, sizeof(st_dfPACKET_SC_DAMAGE));
-							}
-							break;
-						}
-					}
-				}
-				break;
-				case dfPACKET_MOVE_DIR_RR:
-				{
-					for (auto session_it = Session_List.begin(); session_it != Session_List.end(); ++session_it)
-					{
-						if ((*session_it)->_Live == false)
-						{
-							continue;//죽어있는 패킷 무시
-						}
-
-						if (tmpSesion->_Id == (*session_it)->_Id)
-						{
-							continue;
-						}
-
-						if ((tmpSesion->_X + dfATTACK1_RANGE_X >= (*session_it)->_X
-							&& tmpSesion->_X <= (*session_it)->_X)
-							&& ((tmpSesion->_Y - dfATTACK1_RANGE_Y <= (*session_it)->_Y
-							&& tmpSesion->_Y >= (*session_it)->_Y)
-							|| (tmpSesion->_Y + dfATTACK1_RANGE_Y >= (*session_it)->_Y
-							&& tmpSesion->_Y <= (*session_it)->_Y)))//80범위 내에 존재하는 타겟이 있다면?
-						{
-							(*session_it)->_HP -= dfATTACK1_DAMAGE;//맞은 대상의 HP를 깎는다.
-
-							if ((*session_it)->_HP <= 0)
-							{
-								Disconnect((*session_it));//클라이언트가 죽었으므로 종료
-							}
-							else 
-							{
-								st_dfPACKET_header st_SC_DAMAGE_HEADER;
-								st_SC_DAMAGE_HEADER.byCode = PACKET_CODE;
-								st_SC_DAMAGE_HEADER.bySize = sizeof(st_dfPACKET_SC_DAMAGE);
-								st_SC_DAMAGE_HEADER.byType = dfPACKET_SC_DAMAGE;
-
-								st_dfPACKET_SC_DAMAGE st_SC_DAMAGE;
-								st_SC_DAMAGE.Hp = (*session_it)->_HP;
-								st_SC_DAMAGE._Attack_Id = tmpSesion->_Id;
-								st_SC_DAMAGE._Damage_Id = (*session_it)->_Id;
-
-								sendBroadCast(nullptr, (char*)&st_SC_DAMAGE_HEADER, sizeof(st_dfPACKET_header));
-								sendBroadCast(nullptr, (char*)&st_SC_DAMAGE, sizeof(st_dfPACKET_SC_DAMAGE));
-							}
-							break;
-						}
-					}
-				}
-				break;
-			}
-#ifdef df_LOG
-			printf("PACKET_ATTACK1 # SessionID: %d / Direction:%d / X:%d / Y:%d\n", tmpSesion->_Id, tmpSesion->_Direction, tmpSesion->_X, tmpSesion->_Y);
-#endif
+			PacketProc(tmpSesion, dfPACKET_CS_ATTACK1, (char*)&st_CS_ATTACK1);
+			//tmpSesion->_RecvBuf->MoveFront(retSwitchDeq);
 		}
 		break;
 		case dfPACKET_CS_ATTACK2://공격2
@@ -632,139 +474,13 @@ void RecvProc(Session* session)//유저가 데이터를 보내왔을때
 				return;
 			}
 
-			//받은 데이터를 서버 세션리스트 값에 업데이트 시켜준다.
-			tmpSesion->_Direction = st_CS_ATTACK2._Direction;//공격하는 방향
-			tmpSesion->_Direction_check = ON_STOP;//이동중 이라고 변경
-			tmpSesion->_X = st_CS_ATTACK2._X;//받은 크기값을 넣는다.
-			tmpSesion->_Y = st_CS_ATTACK2._Y;//받은 크기값을 넣는다.
-
-			//헤더설정
-			st_dfPACKET_header st_SC_ATTACK2_HAEDER;
-			st_SC_ATTACK2_HAEDER.byCode = PACKET_CODE;
-			st_SC_ATTACK2_HAEDER.bySize = sizeof(st_dfPACKET_SC_ATTACK2);
-			st_SC_ATTACK2_HAEDER.byType = dfPACKET_SC_ATTACK2;
-
-			//데이터설정
-			st_dfPACKET_SC_ATTACK2 st_SC_ATTACK2;
-			st_SC_ATTACK2._Id = tmpSesion->_Id;//어떤 녀석인지 ID설정
-			st_SC_ATTACK2._Direction = tmpSesion->_Direction;//보는 방향지정
-			st_SC_ATTACK2._X = tmpSesion->_X;//위치X
-			st_SC_ATTACK2._Y = tmpSesion->_Y;//위치Y
-
-			sendBroadCast(tmpSesion, (char*)&st_SC_ATTACK2_HAEDER, sizeof(st_dfPACKET_header));
-			sendBroadCast(tmpSesion, (char*)&st_SC_ATTACK2, sizeof(st_dfPACKET_SC_ATTACK2));
-			
-			switch (tmpSesion->_Direction)
-			{
-			case dfPACKET_MOVE_DIR_LL:
-			{
-				for (auto session_it = Session_List.begin(); session_it != Session_List.end(); ++session_it)
-				{
-					if ((*session_it)->_Live == false)
-					{
-						continue;//죽어있는 패킷 무시
-					}
-
-					if (tmpSesion->_Id == (*session_it)->_Id)
-					{
-						continue;
-					}
-					//왼쪽범위와 Y축 위아래 일치했을 경우
-					if ((tmpSesion->_X - dfATTACK2_RANGE_X <= (*session_it)->_X
-						&& tmpSesion->_X >= (*session_it)->_X)
-						
-						&& ((tmpSesion->_Y - dfATTACK2_RANGE_Y <= (*session_it)->_Y
-						&& tmpSesion->_Y >= (*session_it)->_Y)
-						|| (tmpSesion->_Y + dfATTACK2_RANGE_Y >= (*session_it)->_Y
-						&& tmpSesion->_Y <= (*session_it)->_Y)))//80범위 내에 존재하는 타겟이 있다면?
-					{
-						(*session_it)->_HP -= dfATTACK2_DAMAGE;//맞은 대상의 HP를 깎는다.
-
-						if ((*session_it)->_HP <= 0)
-						{
-							Disconnect((*session_it));//클라이언트가 죽었으므로 종료
-						}
-						else 
-						{
-							st_dfPACKET_header st_SC_DAMAGE_HEADER;
-							st_SC_DAMAGE_HEADER.byCode = PACKET_CODE;
-							st_SC_DAMAGE_HEADER.bySize = sizeof(st_dfPACKET_SC_DAMAGE);
-							st_SC_DAMAGE_HEADER.byType = dfPACKET_SC_DAMAGE;
-
-							st_dfPACKET_SC_DAMAGE st_SC_DAMAGE;
-							st_SC_DAMAGE.Hp = (*session_it)->_HP;
-							st_SC_DAMAGE._Attack_Id = tmpSesion->_Id;
-							st_SC_DAMAGE._Damage_Id = (*session_it)->_Id;
-
-							sendBroadCast(nullptr, (char*)&st_SC_DAMAGE_HEADER, sizeof(st_dfPACKET_header));
-							sendBroadCast(nullptr, (char*)&st_SC_DAMAGE, sizeof(st_dfPACKET_SC_DAMAGE));
-						}
-						break;
-					}
-				}
-			}
-			break;
-			case dfPACKET_MOVE_DIR_RR:
-			{
-				for (auto session_it = Session_List.begin(); session_it != Session_List.end(); ++session_it)
-				{
-					if ((*session_it)->_Live == false)
-					{
-						continue;//죽어있는 패킷 무시
-					}
-
-					if (tmpSesion->_Id == (*session_it)->_Id)
-					{
-						continue;
-					}
-					//오른쪽 범위와 Y축 위아래 일치했을 경우
-					if ((tmpSesion->_X + dfATTACK2_RANGE_X >= (*session_it)->_X
-						&& tmpSesion->_X <= (*session_it)->_X)
-						&& ((tmpSesion->_Y - dfATTACK2_RANGE_Y <= (*session_it)->_Y
-						&& tmpSesion->_Y >= (*session_it)->_Y)
-						|| (tmpSesion->_Y + dfATTACK2_RANGE_Y >= (*session_it)->_Y
-						&& tmpSesion->_Y <= (*session_it)->_Y)))//80범위 내에 존재하는 타겟이 있다면?
-					{
-						(*session_it)->_HP -= dfATTACK2_DAMAGE;//맞은 대상의 HP를 깎는다.
-
-						if ((*session_it)->_HP <= 0)
-						{
-							Disconnect((*session_it));//클라이언트가 죽었으므로 종료
-						}
-						else 
-						{
-							st_dfPACKET_header st_SC_DAMAGE_HEADER;
-							st_SC_DAMAGE_HEADER.byCode = PACKET_CODE;
-							st_SC_DAMAGE_HEADER.bySize = sizeof(st_dfPACKET_SC_DAMAGE);
-							st_SC_DAMAGE_HEADER.byType = dfPACKET_SC_DAMAGE;
-
-							st_dfPACKET_SC_DAMAGE st_SC_DAMAGE;
-							st_SC_DAMAGE.Hp = (*session_it)->_HP;
-							st_SC_DAMAGE._Attack_Id = tmpSesion->_Id;
-							st_SC_DAMAGE._Damage_Id = (*session_it)->_Id;
-
-							sendBroadCast(nullptr, (char*)&st_SC_DAMAGE_HEADER, sizeof(st_dfPACKET_header));
-							sendBroadCast(nullptr, (char*)&st_SC_DAMAGE, sizeof(st_dfPACKET_SC_DAMAGE));
-
-							if ((*session_it)->_HP <= 0)
-							{
-								Disconnect((*session_it));//클라이언트가 죽었으므로 종료
-							}
-						}
-						break;
-					}
-				}
-			}
-			break;
-			}
-#ifdef df_LOG
-			printf("PACKET_ATTACK2 # SessionID: %d / Direction:%d / X:%d / Y:%d\n", tmpSesion->_Id, tmpSesion->_Direction, tmpSesion->_X, tmpSesion->_Y);
-#endif
+			PacketProc(tmpSesion, dfPACKET_CS_ATTACK2, (char*)&st_CS_ATTACK2);
+			//tmpSesion->_RecvBuf->MoveFront(retSwitchDeq);
 		}
 		break;
 		case dfPACKET_CS_ATTACK3://공격3
 		{
-			st_dfPACKET_CS_ATTACK2 st_CS_ATTACK3;
+			st_dfPACKET_CS_ATTACK3 st_CS_ATTACK3;
 			retSwitchDeq = tmpSesion->_RecvBuf->Dequeue((char*)&st_CS_ATTACK3, st_recv_header.bySize);//사이즈만큼 디큐한다.
 			if (retSwitchDeq != st_recv_header.bySize)
 			{
@@ -772,137 +488,8 @@ void RecvProc(Session* session)//유저가 데이터를 보내왔을때
 				return;
 			}
 
-			//받은 데이터를 서버 세션리스트 값에 업데이트 시켜준다.
-			tmpSesion->_Direction = st_CS_ATTACK3._Direction;//공격하는 방향
-			tmpSesion->_Direction_check = ON_STOP;//이동중 이라고 변경
-			tmpSesion->_X = st_CS_ATTACK3._X;//받은 크기값을 넣는다.
-			tmpSesion->_Y = st_CS_ATTACK3._Y;//받은 크기값을 넣는다.
-
-			//헤더설정
-			st_dfPACKET_header st_SC_ATTACK3_HAEDER;
-			st_SC_ATTACK3_HAEDER.byCode = PACKET_CODE;
-			st_SC_ATTACK3_HAEDER.bySize = sizeof(st_dfPACKET_SC_ATTACK3);
-			st_SC_ATTACK3_HAEDER.byType = dfPACKET_SC_ATTACK3;
-
-			//데이터설정
-			st_dfPACKET_SC_ATTACK3 st_SC_ATTACK3;
-			st_SC_ATTACK3._Id = tmpSesion->_Id;//어떤 녀석인지 ID설정
-			st_SC_ATTACK3._Direction = tmpSesion->_Direction;//보는 방향지정
-			st_SC_ATTACK3._X = tmpSesion->_X;//위치X
-			st_SC_ATTACK3._Y = tmpSesion->_Y;//위치Y
-
-			sendBroadCast(tmpSesion, (char*)&st_SC_ATTACK3_HAEDER, sizeof(st_dfPACKET_header));
-			sendBroadCast(tmpSesion, (char*)&st_SC_ATTACK3, sizeof(st_dfPACKET_SC_ATTACK3));
-
-			switch (tmpSesion->_Direction)
-			{
-			case dfPACKET_MOVE_DIR_LL:
-			{
-				for (auto session_it = Session_List.begin(); session_it != Session_List.end(); ++session_it)
-				{
-					if ((*session_it)->_Live == false)
-					{
-						continue;//죽어있는 패킷 무시
-					}
-
-					if (tmpSesion->_Id == (*session_it)->_Id)
-					{
-						continue;
-					}
-
-					if ((tmpSesion->_X - dfATTACK3_RANGE_X <= (*session_it)->_X
-						&& tmpSesion->_X >= (*session_it)->_X)
-
-						&& ((tmpSesion->_Y - dfATTACK3_RANGE_Y <= (*session_it)->_Y
-						&& tmpSesion->_Y >= (*session_it)->_Y)
-						|| (tmpSesion->_Y + dfATTACK3_RANGE_Y >= (*session_it)->_Y
-						&& tmpSesion->_Y <= (*session_it)->_Y)))//80범위 내에 존재하는 타겟이 있다면?
-					{
-						(*session_it)->_HP -= dfATTACK3_DAMAGE;//맞은 대상의 HP를 깎는다.
-
-						if ((*session_it)->_HP <= 0)
-						{
-							Disconnect((*session_it));//클라이언트가 죽었으므로 종료
-						}
-						else {
-							st_dfPACKET_header st_SC_DAMAGE_HEADER;
-							st_SC_DAMAGE_HEADER.byCode = PACKET_CODE;
-							st_SC_DAMAGE_HEADER.bySize = sizeof(st_dfPACKET_SC_DAMAGE);
-							st_SC_DAMAGE_HEADER.byType = dfPACKET_SC_DAMAGE;
-
-							st_dfPACKET_SC_DAMAGE st_SC_DAMAGE;
-							st_SC_DAMAGE.Hp = (*session_it)->_HP;
-							st_SC_DAMAGE._Attack_Id = tmpSesion->_Id;
-							st_SC_DAMAGE._Damage_Id = (*session_it)->_Id;
-
-							sendBroadCast(nullptr, (char*)&st_SC_DAMAGE_HEADER, sizeof(st_dfPACKET_header));
-							sendBroadCast(nullptr, (char*)&st_SC_DAMAGE, sizeof(st_dfPACKET_SC_DAMAGE));
-
-							if ((*session_it)->_HP <= 0)
-							{
-								Disconnect((*session_it));//클라이언트가 죽었으므로 종료
-							}
-						}
-						break;
-					}
-				}
-			}
-			break;
-			case dfPACKET_MOVE_DIR_RR:
-			{
-				for (auto session_it = Session_List.begin(); session_it != Session_List.end(); ++session_it)
-				{
-					if ((*session_it)->_Live == false)
-					{
-						continue;//죽어있는 패킷 무시
-					}
-
-					if (tmpSesion->_Id == (*session_it)->_Id)
-					{
-						continue;
-					}
-
-					if ((tmpSesion->_X + dfATTACK3_RANGE_X >= (*session_it)->_X
-						&& tmpSesion->_X <= (*session_it)->_X)
-						&& ((tmpSesion->_Y - dfATTACK3_RANGE_Y <= (*session_it)->_Y
-						&& tmpSesion->_Y >= (*session_it)->_Y)
-						|| (tmpSesion->_Y + dfATTACK3_RANGE_Y >= (*session_it)->_Y
-						&& tmpSesion->_Y <= (*session_it)->_Y)))//80범위 내에 존재하는 타겟이 있다면?
-					{
-						(*session_it)->_HP -= dfATTACK3_DAMAGE;//맞은 대상의 HP를 깎는다.
-
-						if ((*session_it)->_HP <= 0)
-						{
-							Disconnect((*session_it));//클라이언트가 죽었으므로 종료
-						}
-						else {
-							st_dfPACKET_header st_SC_DAMAGE_HEADER;
-							st_SC_DAMAGE_HEADER.byCode = PACKET_CODE;
-							st_SC_DAMAGE_HEADER.bySize = sizeof(st_dfPACKET_SC_DAMAGE);
-							st_SC_DAMAGE_HEADER.byType = dfPACKET_SC_DAMAGE;
-
-							st_dfPACKET_SC_DAMAGE st_SC_DAMAGE;
-							st_SC_DAMAGE.Hp = (*session_it)->_HP;
-							st_SC_DAMAGE._Attack_Id = tmpSesion->_Id;
-							st_SC_DAMAGE._Damage_Id = (*session_it)->_Id;
-
-							sendBroadCast(nullptr, (char*)&st_SC_DAMAGE_HEADER, sizeof(st_dfPACKET_header));
-							sendBroadCast(nullptr, (char*)&st_SC_DAMAGE, sizeof(st_dfPACKET_SC_DAMAGE));
-
-							if ((*session_it)->_HP <= 0)
-							{
-								Disconnect((*session_it));//클라이언트가 죽었으므로 종료
-							}
-						}
-						break;
-					}
-				}
-			}
-			break;
-			}
-#ifdef df_LOG
-			printf("PACKET_ATTACK3 # SessionID: %d / Direction:%d / X:%d / Y:%d\n", tmpSesion->_Id, tmpSesion->_Direction, tmpSesion->_X, tmpSesion->_Y);
-#endif
+			PacketProc(tmpSesion, dfPACKET_CS_ATTACK3, (char*)&st_CS_ATTACK3);
+			//tmpSesion->_RecvBuf->MoveFront(retSwitchDeq);
 		}
 		break;
 		}
@@ -931,7 +518,7 @@ void SendProc(Session* session)
 	else if (retSend == 0)
 	{
 		int wsaError = WSAGetLastError();//소켓에러값
-		log_msg(wsaError);
+		//log_msg(wsaError);
 		if (wsaError != WSAEWOULDBLOCK)//연결자체에 문제가 생겼다는 뜻이므로
 		{
 			Disconnect(session);//연결종료처리
@@ -948,7 +535,7 @@ void SendProc(Session* session)
 
 };//유저에게 데이터를 보낼때
 
-void sendUniCast(Session* session, char* _Msg, int size)
+void sendUniCast(Session* session, char* _header, char* _Msg, int size)
 {
 	int retUni;
 
@@ -958,6 +545,13 @@ void sendUniCast(Session* session, char* _Msg, int size)
 	}
 	if (session->_SendBuf->GetFreeSize() >= size)//sendbuf에 16바이트 이상이 남아있다면 인큐시킨다.
 	{
+		retUni = session->_SendBuf->Enqueue(_header, sizeof(st_dfPACKET_header));//안들어가면 안들어가는데로 별상관없음 버퍼가 꽉찬거니까
+		if (retUni != sizeof(st_dfPACKET_header))
+		{
+			Disconnect(session);
+			return;
+		}
+
 		retUni = session->_SendBuf->Enqueue(_Msg, size);//안들어가면 안들어가는데로 별상관없음 버퍼가 꽉찬거니까
 		if (retUni != size)
 		{
@@ -968,7 +562,7 @@ void sendUniCast(Session* session, char* _Msg, int size)
 
 };//특정유저에게만 보내기
 
-void sendBroadCast(Session* session, char* _Msg, int size)
+void sendBroadCast(Session* session, char * _header, char* _Msg, int size)
 {
 	int retBro;
 	Session* stmp = session;//보내지 않을 유저
@@ -988,6 +582,12 @@ void sendBroadCast(Session* session, char* _Msg, int size)
 		//각세션의 센드버퍼에 enqueue시킨다.
 		if ((*session_it)->_SendBuf->GetFreeSize() >= size)//sendbuf에 넣을수있는 크기가 남아있다면
 		{
+			retBro = (*session_it)->_SendBuf->Enqueue(_header, sizeof(st_dfPACKET_header));//안들어가면 안들어가는데로 별상관없음 버퍼가 꽉찬거니까
+			if (retBro != sizeof(st_dfPACKET_header))
+			{
+				Disconnect((*session_it));
+			}
+
 			retBro = (*session_it)->_SendBuf->Enqueue(_Msg, size);//안들어가면 안들어가는데로 별상관없음 버퍼가 꽉찬거니까
 			if (retBro != size)
 			{
@@ -1020,24 +620,12 @@ void Disconnect_Clean()//안정성을 위해 디스커넥트된 개체를 네트
 		_Session_Object = *_Session_it;
 		if (_Session_Object->_Live == false) //세션 특정객체가 죽어있다면
 		{
-			//헤더패킷 생성
-			st_dfPACKET_header st_header;
-			st_header.byCode = PACKET_CODE;
-			st_header.bySize = sizeof(st_dfPACKET_SC_DELETE_CHARACTER);
-			st_header.byType = dfPACKET_SC_DELETE_CHARACTER;
-
-			st_dfPACKET_SC_DELETE_CHARACTER st_delete;
-			st_delete._Id = _Session_Object->_Id;
-
-			sendBroadCast(nullptr, (char*)&st_header, sizeof(st_dfPACKET_header));
-			sendBroadCast(nullptr, (char*)&st_delete, sizeof(st_dfPACKET_SC_DELETE_CHARACTER));
+			PacketProc(_Session_Object, dfPACKET_SC_DELETE_CHARACTER, nullptr);
 
 			closesocket(_Session_Object->_Sock);
 			delete _Session_Object->_RecvBuf;//받기버퍼 제거
 			delete _Session_Object->_SendBuf;//보내기 버퍼 제거
-#ifdef df_LOG
-			printf("Delete Session # SessionID %d \n", _Session_Object->_Id);
-#endif
+
 			delete _Session_Object;//동적할당된 개체 제거
 			_Session_it = Session_List.erase(_Session_it);//그 개체를 리스트에서 제거한후 받은 이터레이터를 리턴받는다.;
 		}

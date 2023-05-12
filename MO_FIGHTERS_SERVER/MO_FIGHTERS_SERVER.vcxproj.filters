@@ -35,5 +35,8 @@
     <ClInclude Include="Packet_Enum.h">
       <Filter>헤더 파일</Filter>
     </ClInclude>
+    <ClInclude Include="st_Message_Fun.h">
+      <Filter>헤더 파일</Filter>
+    </ClInclude>
   </ItemGroup>
 </Project>

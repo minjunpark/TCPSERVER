@@ -135,6 +135,7 @@
     <ClInclude Include="CList.h" />
     <ClInclude Include="Packet_Enum.h" />
     <ClInclude Include="Server_Enum.h" />
+    <ClInclude Include="st_Message_Fun.h" />
     <ClInclude Include="TRingBuffer.h" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
