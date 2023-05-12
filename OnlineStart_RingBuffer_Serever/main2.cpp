@@ -150,7 +150,7 @@ void NetWork()
 	{
 		FD_SET((*session_it)->sock, &rset);//반응이 있는소켓을 전부 rset에 넣는다.
 
-		if ((*session_it)->sendBuf->GetUseSize() > 0)//세션 버퍼에 보내야하는 데이터가 0이상이라면?
+		if ((*session_it)->sendBuf->GetUseSize() >= 0)//세션 버퍼에 보내야하는 데이터가 0이상이라면?
 		{
 			FD_SET((*session_it)->sock, &wset);
 		}
@@ -318,7 +318,7 @@ void RecvProc(Session* session)//받은 메세지처리 프로세스
 		wsaError = WSAGetLastError();
 
 		if (wsaError != 10035
-			|| wsaError != 10054
+			|| wsaError != WSAECONNRESET
 			|| wsaError != WSAEWOULDBLOCK)//이에러가 아니라면 로그저장한다.
 		{
 			char buff[200];
