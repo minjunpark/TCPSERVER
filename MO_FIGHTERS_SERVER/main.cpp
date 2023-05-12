@@ -56,7 +56,6 @@ int main()
 {
 	timeBeginPeriod(1);
 	init_sock();
-	log_msg(100);
 	int LogicTime = 0;
 	int SleepTime;
 	DWORD dwTick = timeGetTime();
@@ -1087,11 +1086,11 @@ void init_sock()
 
 	//linger timewait 0 rst바로 전송하게 만들기
 	linger _linger;
-	_linger.l_onoff = 0;
+	_linger.l_onoff = 1;
 	_linger.l_linger = 0;
 
 	int keepval = 0;
-
+	//linger로 time out을 0으로 잡아서 rst를 바로 쏴 TimeWait제거
 	setsockopt(listen_sock, SOL_SOCKET, SO_LINGER, (const char*)&_linger, sizeof(_linger));//링거로 타임아웃 0
 	setsockopt(listen_sock, SOL_SOCKET, SO_KEEPALIVE, (const char*)&keepval, sizeof keepval);//keep alive내가 직접할것
 
