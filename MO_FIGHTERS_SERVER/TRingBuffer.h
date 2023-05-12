@@ -20,7 +20,7 @@ public:
 	int GetFreeSize(void);//현재 버퍼에 남은 용량 얻기
 	int DirectEnqueueSize(void);//버퍼에 한번에 넣을수 있는 사이즈
 	int DirectDequeueSize(void);//버퍼에 한번에 뺄수 있는 사이즈
-
+	
 	//실제작동부
 	int Enqueue(char* chpData, int iSize);//사이즈만큼 버퍼에 넣기
 	int Dequeue(char* chpDest, int iSize);//사이즈만큼 버퍼에 빼기
@@ -36,7 +36,7 @@ public:
 	void Resize(int size);//버퍼의 사이즈를 바꾸는 함수(나중에 고려해볼예정)
 
 private:
-	enum { BLANK_SIZE = 8 };
+	enum { VOID_VALUE = 8 };
 
 
 };

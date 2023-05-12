@@ -43,7 +43,7 @@ TRingBuffer::~TRingBuffer()//버퍼 소멸자
 }
 
 
-void TRingBuffer::Resize(int size) 
+void TRingBuffer::Resize(int size)
 {
 	//char* _Old_Start = _Start;//버퍼 시작지점
 	//int _Old_BufferSize = _BufferSize;//총 버퍼 크기
@@ -67,7 +67,6 @@ void TRingBuffer::Resize(int size)
 	//	_Front = 0;
 	//	_Rear = 0;
 	//}
-
 };
 
 /////////////////////////////////////////////////////////////////////////
@@ -81,7 +80,7 @@ int	TRingBuffer::GetBufferSize(void)
 {
 	if (_Start != nullptr)
 	{
-		return _BufferSize - BLANK_SIZE;
+		return _BufferSize - VOID_VALUE;
 	}
 	return 0;
 }
@@ -113,7 +112,7 @@ int TRingBuffer::GetUseSize(void)
 /////////////////////////////////////////////////////////////////////////
 int TRingBuffer::GetFreeSize(void)
 {
-	return _BufferSize - (GetUseSize() + BLANK_SIZE);
+	return _BufferSize - (GetUseSize() + VOID_VALUE);
 }
 
 /////////////////////////////////////////////////////////////////////////
@@ -142,13 +141,13 @@ int TRingBuffer::DirectEnqueueSize(void)
 {
 	if (_Rear < _Front)
 	{
-		return (_Front - _Rear) - BLANK_SIZE;
+		return (_Front - _Rear) - VOID_VALUE;
 	}
 	else
 	{
-		if (_Front < BLANK_SIZE)
+		if (_Front < VOID_VALUE)
 		{
-			return (_BufferSize - _Rear) - (BLANK_SIZE - _Front);
+			return (_BufferSize - _Rear) - (VOID_VALUE - _Front);
 		}
 		else
 		{
@@ -156,6 +155,7 @@ int TRingBuffer::DirectEnqueueSize(void)
 		}
 	}
 }
+
 /////////////////////////////////////////////////////////////////////////
 // _Rear 에 데이타 넣고 _Rear을 그만큼 이동시킨다.
 //
@@ -183,13 +183,15 @@ int TRingBuffer::Enqueue(char* chpData, int iSize)
 		if (iRear >= iSize)
 		{
 			memcpy(_Start + _Rear, chpData, iSize);
-			//memcpy_s(chpData, iSize, _Start + _Rear, iSize);
+			//memcpy_s(_Start + _Rear, iSize, chpData, iSize);
 			_Rear += iSize;
 		}
 		else
 		{
 			memcpy(_Start + _Rear, chpData, iRear);
 			memcpy(_Start, chpData + iRear, iSize - iRear);
+			//memcpy_s(_Start + _Rear, iSize, chpData, iRear);
+			//memcpy_s(_Start , iSize - iRear, chpData + iRear, iSize - iRear);
 			_Rear = iSize - iRear;
 		}
 	}
