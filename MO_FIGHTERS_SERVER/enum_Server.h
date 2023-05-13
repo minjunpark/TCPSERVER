@@ -6,10 +6,12 @@ enum SERVER_DEFINE
 	SCREEN_HEIGHT = 480,
 	COLORBIT = 32,
 	// 패킷코드 0x89 고정.
-	PACKET_CODE = 0x89,
+	//PACKET_CODE = 0x89,
 	_df_FPS = 20,
 	_df_Buffer_size = 10000
 };
+
+#define PACKET_CODE (char)0x89
 
 enum SERVER_GAME
 {

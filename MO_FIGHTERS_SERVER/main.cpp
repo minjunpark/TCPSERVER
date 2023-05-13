@@ -13,9 +13,10 @@
 #include <time.h>
 #include "TRingBuffer.h"
 #include "CList.h"
-#include "Server_Enum.h"
-#include "Packet_Enum.h"
+#include "enum_Server.h"
+#include "st_Packet.h"
 #define df_LOG//로그 켜고싶으면 세팅
+
 
 using namespace std;
 
@@ -29,18 +30,19 @@ void SendProc(Session* session);//유저에게 데이터를 보낼때
 void sendUniCast(Session* session, char* _header, char* _Msg, int size);
 void sendBroadCast(Session* session, char* _header, char* _Msg, int size);
 
-bool PacketProc();
-
-void Disconnect(Session* session);
-void Disconnect_Clean();
+bool PacketProc(Session* pSession, BYTE byPacketType, char* pPacket);//패킷 전송 과정
+void Disconnect(Session* session);//연결끊기 Session _Live를 false로 바꿔죽인다.
+void Disconnect_Clean();//네트워크 마지막에 죽은세션을 정리한다.
 
 //오류 출력 함수 밑 로그저장
 void err_quit(const WCHAR* msg);
 void err_display(const WCHAR* msg);
-void log_msg(int wasError);
+void log_msg(int _wsaError, int _line, const char* _file);
 
 CList<Session*> Session_List;//접속한 유저리스트
 int Session_Total = 0;//세션 데이터
+
+#include "fun_Message.h"
 
 //서버에 받아들이기 위한 리슨소켓
 SOCKET listen_sock;
@@ -50,40 +52,20 @@ FD_SET rset;
 FD_SET wset;
 int User_Id_Count = 1;
 
-#include "st_Message_Fun.h"
-
-static DWORD frameDelta = 0;
-static DWORD lastTime = GetTickCount64();
+int LogicTime = 0;
+DWORD dwTick = timeGetTime();
+DWORD dwStarttick = timeGetTime();
+//int fc = 0;
 
 int main()
 {
 	timeBeginPeriod(1);
+
 	init_sock();
-	int LogicTime = 0;
-	int SleepTime;
-	DWORD dwTick = timeGetTime();
-	DWORD dwStarttick = timeGetTime();
 
 	while (1) {
-		dwStarttick = timeGetTime();
-
 		NetWork();//네트워크
-
 		Logic();//로직
-
-		//fc++;
-		if (timeGetTime() - dwTick >= 1000)
-		{
-			//sprintf_s(output, "FPS:%d\n", fc);
-			//fc = 0;
-			dwTick = timeGetTime();
-			//OutputDebugStringA(output);
-		}
-
-		LogicTime = timeGetTime() - dwStarttick;
-
-		SleepTime = _df_FPS - LogicTime > _df_FPS ? 0 : _df_FPS - LogicTime;
-		Sleep(SleepTime);
 	}
 }
 
@@ -142,6 +124,14 @@ void NetWork()
 
 void Logic()
 {
+	//50fps 간단 로직
+	LogicTime = timeGetTime() - dwStarttick;
+
+	if (LogicTime < 20)//전 시점에서 20ms가 지나지 않았다면 로직은 수행하지 않는다.
+		return;
+	else //20미리 이상 지났다면 다시 시간초기화
+		dwStarttick = timeGetTime();
+
 	for (auto _Session_it = Session_List.begin(); _Session_it != Session_List.end(); ++_Session_it)
 	{
 		if ((*_Session_it)->_Direction_check != ON_MOVE || (*_Session_it)->_Live != true)
@@ -244,30 +234,30 @@ bool PacketProc(Session* pSession, BYTE byPacketType, char* pPacket)
 {
 	switch (byPacketType)
 	{
-		case dfPACKET_SC_CREATE_MY_CHARACTER:
-			netPacketProc_SC_CREATE_MY_CHARACTER(pSession, pPacket);
-			break;
-		case dfPACKET_SC_CREATE_OTHER_CHARACTER:
-			netPacketProc_SC_CREATE_OTHER_CHARACTER(pSession, pPacket);
-			break;
-		case dfPACKET_SC_DELETE_CHARACTER:
-			netPacketProc_DELETE_CHARACTER(pSession, pPacket);
-			break;
-		case dfPACKET_CS_MOVE_START:
-			netPacketProc_MOVE_START(pSession, pPacket);
-			break;
-		case dfPACKET_CS_MOVE_STOP:
-			netPacketProc_MOVE_STOP(pSession, pPacket);
-			break;
-		case dfPACKET_CS_ATTACK1:
-			netPacketProc_ATTACK1(pSession, pPacket);
-			break;
-		case dfPACKET_CS_ATTACK2:
-			netPacketProc_ATTACK2(pSession, pPacket);
-			break;
-		case dfPACKET_CS_ATTACK3:
-			netPacketProc_ATTACK3(pSession, pPacket);
-			break;
+	case dfPACKET_SC_CREATE_MY_CHARACTER:
+		netPacketProc_SC_CREATE_MY_CHARACTER(pSession, pPacket);
+		break;
+	case dfPACKET_SC_CREATE_OTHER_CHARACTER:
+		netPacketProc_SC_CREATE_OTHER_CHARACTER(pSession, pPacket);
+		break;
+	case dfPACKET_SC_DELETE_CHARACTER:
+		netPacketProc_DELETE_CHARACTER(pSession, pPacket);
+		break;
+	case dfPACKET_CS_MOVE_START:
+		netPacketProc_MOVE_START(pSession, pPacket);
+		break;
+	case dfPACKET_CS_MOVE_STOP:
+		netPacketProc_MOVE_STOP(pSession, pPacket);
+		break;
+	case dfPACKET_CS_ATTACK1:
+		netPacketProc_ATTACK1(pSession, pPacket);
+		break;
+	case dfPACKET_CS_ATTACK2:
+		netPacketProc_ATTACK2(pSession, pPacket);
+		break;
+	case dfPACKET_CS_ATTACK3:
+		netPacketProc_ATTACK3(pSession, pPacket);
+		break;
 	}
 	return true;
 }
@@ -284,7 +274,7 @@ void AcceptProc()
 	if (client_sock == SOCKET_ERROR)//엑셉트 에러면 굳이 건들가치가 없음 그냥 세션연결 자체도 생성안해도됨
 	{
 		int wsaError = WSAGetLastError();
-		log_msg(wsaError);
+		log_msg(wsaError, __LINE__, __FILE__);
 		closesocket(client_sock);
 		return;
 	}
@@ -332,41 +322,27 @@ void AcceptProc()
 
 	//4.생성된 세션 리스트에 넣기
 	Session_List.push_back(NewSession);
+
 	//5.생성된 나를 모든 유저에게 전달한다.
 	PacketProc(NewSession, dfPACKET_SC_CREATE_OTHER_CHARACTER, nullptr);
-	
-	// 
-	//st_dfPACKET_header st_my_other_header;
-	//st_my_other_header.byCode = PACKET_CODE;
-	//st_my_other_header.bySize = sizeof(st_dfPACKET_SC_CREATE_OTHER_CHARACTER);
-	//st_my_other_header.byType = dfPACKET_SC_CREATE_OTHER_CHARACTER;
 
-	//st_dfPACKET_SC_CREATE_OTHER_CHARACTER st_my_other_create;
-	//st_my_other_create._Id = AccteptTotal;
-	//st_my_other_create._Direction = default_Direction;
-	//st_my_other_create.HP = defualt_HP;
-	//st_my_other_create._X = defualt_X_SET;
-	//st_my_other_create._Y = defualt_Y_SET;
-
-	//sendBroadCast(NewSession, (char*)&st_my_other_header, (char*)&st_my_other_create, sizeof(st_dfPACKET_SC_CREATE_OTHER_CHARACTER));
 };//접속유저가 새로 생겼을때
 
 void RecvProc(Session* session)//유저가 데이터를 보내왔을때
 {
 	Session* tmpSesion;
 	tmpSesion = session;
-	char buf[_df_Buffer_size];
-	memset(buf, 0, sizeof(buf));//버퍼 clean
+
 	int retRecv;
 	//retRecv = recv(tmpSesion->_Sock, (char*)buf, tmpSesion->_RecvBuf->GetFreeSize(), 0);//남아있는 Free사이즈만큼 긁어온다.
 	retRecv = recv(tmpSesion->_Sock, (char*)tmpSesion->_RecvBuf->GetRearBufferPtr(),
-		tmpSesion->_RecvBuf->DirectEnqueueSize(), 0);//남아있는 Free사이즈만큼 긁어온다.
+		tmpSesion->_RecvBuf->DirectEnqueueSize(), 0);//한번에 넣을수있는 사이즈만큼 넣는다.
 
 	if (retRecv == SOCKET_ERROR)//소켓 자체에 문제가 생겼다는 뜻이므로
 	{
 		int wsaError = WSAGetLastError();//소켓에러값
 
-		log_msg(wsaError);
+		log_msg(wsaError, __LINE__, __FILE__);
 
 		if (wsaError != WSAEWOULDBLOCK)//연결자체에 문제가 생겼다는 뜻이므로
 		{
@@ -374,10 +350,10 @@ void RecvProc(Session* session)//유저가 데이터를 보내왔을때
 			return;//송신버퍼가 비어있다는 뜻이므로 루프를 탈출한다.
 		}
 	}
-	else if (retRecv == 0)
+	else if (retRecv == 0)//그냥 연결종료 상태
 	{
 		int wsaError = WSAGetLastError();//소켓에러값
-		//log_msg(wsaError);
+
 		if (wsaError != WSAEWOULDBLOCK)//연결자체에 문제가 생겼다는 뜻이므로
 		{
 			Disconnect(session);//연결종료처리
@@ -387,14 +363,6 @@ void RecvProc(Session* session)//유저가 데이터를 보내왔을때
 	}
 
 	tmpSesion->_RecvBuf->MoveRear(retRecv);
-
-	//int retRing = tmpSesion->_RecvBuf->Enqueue((char*)buf, retRecv);//받은만큼 인큐한후
-
-	//if (retRecv != retRing)
-	//{
-	//	Disconnect(tmpSesion);
-	//	return;
-	//}
 
 	while (1)
 	{
@@ -502,24 +470,15 @@ void RecvProc(Session* session)//유저가 데이터를 보내왔을때
 
 void SendProc(Session* session)
 {
-	//char buf[_df_Buffer_size];
-	//int retPeek = session->_SendBuf->Peek(buf, session->_SendBuf->GetUseSize());//버퍼에서 Usesize만큼 가져오기
-
-	////긁어온것과 보낸양이 다르다? 링버퍼가 박살나서 이상하게 만들어진것이다 연결을 종료하고 로그를 남겨야한다.s
-	//if (retPeek != session->_SendBuf->GetUseSize())
-	//{
-	//	Disconnect(session);
-	//	return;
-	//}
 	int retSend;
-	//retSend = send(session->_Sock, buf, retPeek, 0);//가져온만큼 전송
-	retSend = send(session->_Sock, session->_SendBuf->GetFrontBufferPtr(), 
+
+	retSend = send(session->_Sock, session->_SendBuf->GetFrontBufferPtr(),
 		session->_SendBuf->DirectDequeueSize(), 0);//가져온만큼 전송
 
 	if (retSend == SOCKET_ERROR)//소켓 자체에 문제가 생겼다는 뜻이므로
 	{
 		int wsaError = WSAGetLastError();//소켓에러값
-		log_msg(wsaError);
+		log_msg(wsaError, __LINE__, __FILE__);
 		if (wsaError != WSAEWOULDBLOCK)//연결자체에 문제가 생겼다는 뜻이므로
 		{
 			Disconnect(session);//연결종료처리
@@ -707,6 +666,7 @@ void init_sock()
 	u_long on = 1;
 	retOut = ioctlsocket(listen_sock, FIONBIO, &on);
 	if (retOut == SOCKET_ERROR)err_quit(L"ioctlsocket()");
+
 }
 
 
@@ -739,13 +699,13 @@ void err_display(const WCHAR* msg)
 }
 
 //로직처리함수
-void log_msg(int wsaError)
+void log_msg(int _wsaError, int _line, const char* _file)
 {
 	//이 에러라면 로그저장 안한다.
-	if (wsaError == WSAECONNRESET//현재 연결은 원격 호스트에 의해 강제로 끊겼습니다.
-		|| wsaError == WSAECONNABORTED//소프트웨어로 인해 연결이 중단되었습니다.
-		|| wsaError == WSANOTINITIALISED//성공한 WSAStartup이 아직 수행되지 않았습니다.
-		|| wsaError == WSAEWOULDBLOCK)//이 오류는 즉시 완료할 수 없는 비블로킹 소켓의 작업에서 반환됩니다
+	if (_wsaError == WSAECONNRESET//현재 연결은 원격 호스트에 의해 강제로 끊겼습니다.
+		|| _wsaError == WSAECONNABORTED//소프트웨어로 인해 연결이 중단되었습니다.
+		|| _wsaError == WSANOTINITIALISED//성공한 WSAStartup이 아직 수행되지 않았습니다.
+		|| _wsaError == WSAEWOULDBLOCK)//이 오류는 즉시 완료할 수 없는 비블로킹 소켓의 작업에서 반환됩니다
 	{
 		return;
 	}
@@ -759,12 +719,20 @@ void log_msg(int wsaError)
 
 	sprintf_s(log_FileName, sizeof(log_FileName), "Log_%02d_%02d_%02d.txt", date.tm_mday, date.tm_hour, date.tm_min);
 	fopen_s(&fp, log_FileName, "wb");//파일 생성
+	if (fp == nullptr)
+	{
+		return;
+	}
 	fclose(fp);
 
 	char buff[200];
 	memset(buff, 0, sizeof(buff));
-	sprintf_s(buff, "retRecv Error = %d", wsaError);
+	sprintf_s(buff, "retRecv Error = %d Line = %d File = %s", _wsaError, _line, _file);
 	fopen_s(&fp, log_FileName, "a");
+	if (fp == nullptr)
+	{
+		return;
+	}
 	fprintf(fp, "%s\n", buff);
 	fclose(fp);
 }

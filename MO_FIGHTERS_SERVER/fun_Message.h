@@ -26,7 +26,8 @@ bool netPacketProc_ATTACK3(Session* pSession, char* pPacket);
 void mp_ATTACK3(st_dfPACKET_header* pHeader, st_dfPACKET_SC_ATTACK3* pPacket, int p_id, int p_Direction, int p_X, int p_Y);
 
 //bool netPacketProc_DAMAGE(Session* pSession, char* pPacket);
-//bool mp_DAMAGE(st_dfPACKET_header* pHeader, st_dfPACKET_SC_MOVE_START* pPacket, int p_id, int p_Direction, int p_X, int p_Y);
+void mp_DAMAGE(st_dfPACKET_header* pHeader, st_dfPACKET_SC_DAMAGE* pPacket, int _a_id, int _d_id, char _hp);
+
 
 
 //dfPACKET_SC_CREATE_MY_CHARACTER
@@ -242,9 +243,9 @@ bool netPacketProc_ATTACK1(Session* pSession, char* pPacket)
 			if ((pSession->_X - dfATTACK1_RANGE_X <= (*session_it)->_X
 				&& pSession->_X >= (*session_it)->_X)
 				&& ((pSession->_Y - dfATTACK1_RANGE_Y <= (*session_it)->_Y
-					&& pSession->_Y >= (*session_it)->_Y)
-					|| (pSession->_Y + dfATTACK1_RANGE_Y >= (*session_it)->_Y
-						&& pSession->_Y <= (*session_it)->_Y)))//80범위 내에 존재하는 타겟이 있다면?
+				&& pSession->_Y >= (*session_it)->_Y)
+				|| (pSession->_Y + dfATTACK1_RANGE_Y >= (*session_it)->_Y
+				&& pSession->_Y <= (*session_it)->_Y)))//80범위 내에 존재하는 타겟이 있다면?
 			{
 				(*session_it)->_HP -= dfATTACK1_DAMAGE;//맞은 대상의 HP를 깎는다.
 
@@ -255,15 +256,8 @@ bool netPacketProc_ATTACK1(Session* pSession, char* pPacket)
 				else
 				{
 					st_dfPACKET_header st_SC_DAMAGE_HEADER;
-					st_SC_DAMAGE_HEADER.byCode = PACKET_CODE;
-					st_SC_DAMAGE_HEADER.bySize = sizeof(st_dfPACKET_SC_DAMAGE);
-					st_SC_DAMAGE_HEADER.byType = dfPACKET_SC_DAMAGE;
-
 					st_dfPACKET_SC_DAMAGE st_SC_DAMAGE;
-					st_SC_DAMAGE.Hp = (*session_it)->_HP;
-					st_SC_DAMAGE._Attack_Id = pSession->_Id;
-					st_SC_DAMAGE._Damage_Id = (*session_it)->_Id;
-
+					mp_DAMAGE(&st_SC_DAMAGE_HEADER, &st_SC_DAMAGE, pSession->_Id, (*session_it)->_Id, (*session_it)->_HP);
 					sendBroadCast(nullptr, (char*)&st_SC_DAMAGE_HEADER, (char*)&st_SC_DAMAGE, sizeof(st_dfPACKET_SC_DAMAGE));
 				}
 				break;
@@ -301,15 +295,8 @@ bool netPacketProc_ATTACK1(Session* pSession, char* pPacket)
 				else
 				{
 					st_dfPACKET_header st_SC_DAMAGE_HEADER;
-					st_SC_DAMAGE_HEADER.byCode = PACKET_CODE;
-					st_SC_DAMAGE_HEADER.bySize = sizeof(st_dfPACKET_SC_DAMAGE);
-					st_SC_DAMAGE_HEADER.byType = dfPACKET_SC_DAMAGE;
-
 					st_dfPACKET_SC_DAMAGE st_SC_DAMAGE;
-					st_SC_DAMAGE.Hp = (*session_it)->_HP;
-					st_SC_DAMAGE._Attack_Id = pSession->_Id;
-					st_SC_DAMAGE._Damage_Id = (*session_it)->_Id;
-
+					mp_DAMAGE(&st_SC_DAMAGE_HEADER, &st_SC_DAMAGE, pSession->_Id, (*session_it)->_Id, (*session_it)->_HP);
 					sendBroadCast(nullptr, (char*)&st_SC_DAMAGE_HEADER, (char*)&st_SC_DAMAGE, sizeof(st_dfPACKET_SC_DAMAGE));
 				}
 				break;
@@ -383,9 +370,9 @@ bool netPacketProc_ATTACK2(Session* pSession, char* pPacket)
 			if ((pSession->_X - dfATTACK2_RANGE_X <= (*session_it)->_X
 				&& pSession->_X >= (*session_it)->_X)
 				&& ((pSession->_Y - dfATTACK2_RANGE_Y <= (*session_it)->_Y
-					&& pSession->_Y >= (*session_it)->_Y)
-					|| (pSession->_Y + dfATTACK2_RANGE_Y >= (*session_it)->_Y
-						&& pSession->_Y <= (*session_it)->_Y)))//80범위 내에 존재하는 타겟이 있다면?
+				&& pSession->_Y >= (*session_it)->_Y)
+				|| (pSession->_Y + dfATTACK2_RANGE_Y >= (*session_it)->_Y
+				&& pSession->_Y <= (*session_it)->_Y)))//80범위 내에 존재하는 타겟이 있다면?
 			{
 				(*session_it)->_HP -= dfATTACK2_DAMAGE;//맞은 대상의 HP를 깎는다.
 
@@ -395,16 +382,18 @@ bool netPacketProc_ATTACK2(Session* pSession, char* pPacket)
 				}
 				else
 				{
+					//st_dfPACKET_header st_SC_DAMAGE_HEADER;
+					//st_SC_DAMAGE_HEADER.byCode = PACKET_CODE;
+					//st_SC_DAMAGE_HEADER.bySize = sizeof(st_dfPACKET_SC_DAMAGE);
+					//st_SC_DAMAGE_HEADER.byType = dfPACKET_SC_DAMAGE;
+
+					//st_dfPACKET_SC_DAMAGE st_SC_DAMAGE;
+					//st_SC_DAMAGE.Hp = (*session_it)->_HP;
+					//st_SC_DAMAGE._Attack_Id = pSession->_Id;
+					//st_SC_DAMAGE._Damage_Id = (*session_it)->_Id;
 					st_dfPACKET_header st_SC_DAMAGE_HEADER;
-					st_SC_DAMAGE_HEADER.byCode = PACKET_CODE;
-					st_SC_DAMAGE_HEADER.bySize = sizeof(st_dfPACKET_SC_DAMAGE);
-					st_SC_DAMAGE_HEADER.byType = dfPACKET_SC_DAMAGE;
-
 					st_dfPACKET_SC_DAMAGE st_SC_DAMAGE;
-					st_SC_DAMAGE.Hp = (*session_it)->_HP;
-					st_SC_DAMAGE._Attack_Id = pSession->_Id;
-					st_SC_DAMAGE._Damage_Id = (*session_it)->_Id;
-
+					mp_DAMAGE(&st_SC_DAMAGE_HEADER, &st_SC_DAMAGE, pSession->_Id, (*session_it)->_Id, (*session_it)->_HP);
 					sendBroadCast(nullptr, (char*)&st_SC_DAMAGE_HEADER, (char*)&st_SC_DAMAGE, sizeof(st_dfPACKET_SC_DAMAGE));
 				}
 				break;
@@ -442,15 +431,8 @@ bool netPacketProc_ATTACK2(Session* pSession, char* pPacket)
 				else
 				{
 					st_dfPACKET_header st_SC_DAMAGE_HEADER;
-					st_SC_DAMAGE_HEADER.byCode = PACKET_CODE;
-					st_SC_DAMAGE_HEADER.bySize = sizeof(st_dfPACKET_SC_DAMAGE);
-					st_SC_DAMAGE_HEADER.byType = dfPACKET_SC_DAMAGE;
-
 					st_dfPACKET_SC_DAMAGE st_SC_DAMAGE;
-					st_SC_DAMAGE.Hp = (*session_it)->_HP;
-					st_SC_DAMAGE._Attack_Id = pSession->_Id;
-					st_SC_DAMAGE._Damage_Id = (*session_it)->_Id;
-
+					mp_DAMAGE(&st_SC_DAMAGE_HEADER, &st_SC_DAMAGE, pSession->_Id, (*session_it)->_Id, (*session_it)->_HP);
 					sendBroadCast(nullptr, (char*)&st_SC_DAMAGE_HEADER, (char*)&st_SC_DAMAGE, sizeof(st_dfPACKET_SC_DAMAGE));
 				}
 				break;
@@ -533,15 +515,8 @@ bool netPacketProc_ATTACK3(Session* pSession, char* pPacket)
 				else
 				{
 					st_dfPACKET_header st_SC_DAMAGE_HEADER;
-					st_SC_DAMAGE_HEADER.byCode = PACKET_CODE;
-					st_SC_DAMAGE_HEADER.bySize = sizeof(st_dfPACKET_SC_DAMAGE);
-					st_SC_DAMAGE_HEADER.byType = dfPACKET_SC_DAMAGE;
-
 					st_dfPACKET_SC_DAMAGE st_SC_DAMAGE;
-					st_SC_DAMAGE.Hp = (*session_it)->_HP;
-					st_SC_DAMAGE._Attack_Id = pSession->_Id;
-					st_SC_DAMAGE._Damage_Id = (*session_it)->_Id;
-
+					mp_DAMAGE(&st_SC_DAMAGE_HEADER, &st_SC_DAMAGE, pSession->_Id, (*session_it)->_Id, (*session_it)->_HP);
 					sendBroadCast(nullptr, (char*)&st_SC_DAMAGE_HEADER, (char*)&st_SC_DAMAGE, sizeof(st_dfPACKET_SC_DAMAGE));
 				}
 				break;
@@ -579,15 +554,8 @@ bool netPacketProc_ATTACK3(Session* pSession, char* pPacket)
 				else
 				{
 					st_dfPACKET_header st_SC_DAMAGE_HEADER;
-					st_SC_DAMAGE_HEADER.byCode = PACKET_CODE;
-					st_SC_DAMAGE_HEADER.bySize = sizeof(st_dfPACKET_SC_DAMAGE);
-					st_SC_DAMAGE_HEADER.byType = dfPACKET_SC_DAMAGE;
-
 					st_dfPACKET_SC_DAMAGE st_SC_DAMAGE;
-					st_SC_DAMAGE.Hp = (*session_it)->_HP;
-					st_SC_DAMAGE._Attack_Id = pSession->_Id;
-					st_SC_DAMAGE._Damage_Id = (*session_it)->_Id;
-
+					mp_DAMAGE(&st_SC_DAMAGE_HEADER, &st_SC_DAMAGE, pSession->_Id, (*session_it)->_Id, (*session_it)->_HP);
 					sendBroadCast(nullptr, (char*)&st_SC_DAMAGE_HEADER, (char*)&st_SC_DAMAGE, sizeof(st_dfPACKET_SC_DAMAGE));
 				}
 				break;
@@ -631,18 +599,17 @@ void mp_ATTACK3(st_dfPACKET_header* pHeader, st_dfPACKET_SC_ATTACK3* pPacket, in
 //	return true;
 //}
 //
-//bool mp_DAMAGE(st_dfPACKET_header* pHeader, st_dfPACKET_SC_DAMAGE* pPacket, int _a_id,int _d_id,char _hp)
-//{
-//	pHeader->byCode = PACKET_CODE;
-//	pHeader->bySize = sizeof(st_dfPACKET_SC_DAMAGE);
-//	pHeader->byType = dfPACKET_SC_DAMAGE;
-//
-//	pPacket->_Attack_Id = _a_id;//어떤 녀석인지 ID설정
-//	pPacket->_Damage_Id = _d_id;//보는 방향지정
-//	pPacket->Hp = _hp;//위치X
-//
-//	return true;
-//}
+
+void mp_DAMAGE(st_dfPACKET_header* pHeader, st_dfPACKET_SC_DAMAGE* pPacket, int _a_id,int _d_id,char _hp)
+{
+	pHeader->byCode = PACKET_CODE;
+	pHeader->bySize = sizeof(st_dfPACKET_SC_DAMAGE);
+	pHeader->byType = dfPACKET_SC_DAMAGE;
+
+	pPacket->_Attack_Id = _a_id;//어떤 녀석인지 ID설정
+	pPacket->_Damage_Id = _d_id;//보는 방향지정
+	pPacket->Hp = _hp;//위치X
+}
 
 //dfPACKET_CS_SYNC
 

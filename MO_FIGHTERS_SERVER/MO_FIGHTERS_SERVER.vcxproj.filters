@@ -23,7 +23,7 @@
     </ClCompile>
   </ItemGroup>
   <ItemGroup>
-    <ClInclude Include="Server_Enum.h">
+    <ClInclude Include="enum_Server.h">
       <Filter>헤더 파일</Filter>
     </ClInclude>
     <ClInclude Include="TRingBuffer.h">
@@ -32,10 +32,10 @@
     <ClInclude Include="CList.h">
       <Filter>헤더 파일</Filter>
     </ClInclude>
-    <ClInclude Include="Packet_Enum.h">
+    <ClInclude Include="st_Packet.h">
       <Filter>헤더 파일</Filter>
     </ClInclude>
-    <ClInclude Include="st_Message_Fun.h">
+    <ClInclude Include="fun_Message.h">
       <Filter>헤더 파일</Filter>
     </ClInclude>
   </ItemGroup>
