@@ -103,6 +103,7 @@ void NetWork()
 		if (FD_ISSET(listen_sock, &rset))//리슨소켓에 반응이 있다면
 		{
 			AcceptProc();
+			retSelect--;
 		}
 
 		//현재 세션리스트중에 반응이 있는 소켓이 있는지 확인하기위해 모든 리스트를 돌면서 확인한다.
@@ -111,13 +112,18 @@ void NetWork()
 			if (FD_ISSET((*session_it)->_Sock, &rset))//반응이 있는 읽기 소켓이 있다면?
 			{
 				RecvProc(*session_it);//Recv Proc를 실행한다.
+				retSelect--;
 			}
 
 			if (FD_ISSET((*session_it)->_Sock, &wset))//반응가능한 쓰기소켓이 있다면
 			{
 				SendProc(*session_it);
+				retSelect--;
 			}
+			if (retSelect <= 0)
+				break;
 		}
+
 	}
 	Disconnect_Clean();//연결이 끊긴 녀석들을 모두제거한다.
 };
@@ -234,30 +240,30 @@ bool PacketProc(Session* pSession, BYTE byPacketType, char* pPacket)
 {
 	switch (byPacketType)
 	{
-	case dfPACKET_SC_CREATE_MY_CHARACTER:
-		netPacketProc_SC_CREATE_MY_CHARACTER(pSession, pPacket);
-		break;
-	case dfPACKET_SC_CREATE_OTHER_CHARACTER:
-		netPacketProc_SC_CREATE_OTHER_CHARACTER(pSession, pPacket);
-		break;
-	case dfPACKET_SC_DELETE_CHARACTER:
-		netPacketProc_DELETE_CHARACTER(pSession, pPacket);
-		break;
-	case dfPACKET_CS_MOVE_START:
-		netPacketProc_MOVE_START(pSession, pPacket);
-		break;
-	case dfPACKET_CS_MOVE_STOP:
-		netPacketProc_MOVE_STOP(pSession, pPacket);
-		break;
-	case dfPACKET_CS_ATTACK1:
-		netPacketProc_ATTACK1(pSession, pPacket);
-		break;
-	case dfPACKET_CS_ATTACK2:
-		netPacketProc_ATTACK2(pSession, pPacket);
-		break;
-	case dfPACKET_CS_ATTACK3:
-		netPacketProc_ATTACK3(pSession, pPacket);
-		break;
+		case dfPACKET_SC_CREATE_MY_CHARACTER:
+			netPacketProc_SC_CREATE_MY_CHARACTER(pSession, pPacket);
+			break;
+		case dfPACKET_SC_CREATE_OTHER_CHARACTER:
+			netPacketProc_SC_CREATE_OTHER_CHARACTER(pSession, pPacket);
+			break;
+		case dfPACKET_SC_DELETE_CHARACTER:
+			netPacketProc_DELETE_CHARACTER(pSession, pPacket);
+			break;
+		case dfPACKET_CS_MOVE_START:
+			netPacketProc_MOVE_START(pSession, pPacket);
+			break;
+		case dfPACKET_CS_MOVE_STOP:
+			netPacketProc_MOVE_STOP(pSession, pPacket);
+			break;
+		case dfPACKET_CS_ATTACK1:
+			netPacketProc_ATTACK1(pSession, pPacket);
+			break;
+		case dfPACKET_CS_ATTACK2:
+			netPacketProc_ATTACK2(pSession, pPacket);
+			break;
+		case dfPACKET_CS_ATTACK3:
+			netPacketProc_ATTACK3(pSession, pPacket);
+			break;
 	}
 	return true;
 }
@@ -600,10 +606,9 @@ void Disconnect_Clean()//안정성을 위해 디스커넥트된 개체를 네트
 			PacketProc(_Session_Object, dfPACKET_SC_DELETE_CHARACTER, nullptr);
 
 			closesocket(_Session_Object->_Sock);
-			delete _Session_Object->_RecvBuf;//받기버퍼 제거
-			delete _Session_Object->_SendBuf;//보내기 버퍼 제거
-
-			delete _Session_Object;//동적할당된 개체 제거
+			delete _Session_Object->_RecvBuf;//세션 받기버퍼 제거
+			delete _Session_Object->_SendBuf;//세션 보내기 버퍼 제거
+			delete _Session_Object;//동적할당된 세션 제거
 			_Session_it = Session_List.erase(_Session_it);//그 개체를 리스트에서 제거한후 받은 이터레이터를 리턴받는다.;
 		}
 		else
@@ -705,7 +710,9 @@ void log_msg(int _wsaError, int _line, const char* _file)
 	if (_wsaError == WSAECONNRESET//현재 연결은 원격 호스트에 의해 강제로 끊겼습니다.
 		|| _wsaError == WSAECONNABORTED//소프트웨어로 인해 연결이 중단되었습니다.
 		|| _wsaError == WSANOTINITIALISED//성공한 WSAStartup이 아직 수행되지 않았습니다.
-		|| _wsaError == WSAEWOULDBLOCK)//이 오류는 즉시 완료할 수 없는 비블로킹 소켓의 작업에서 반환됩니다
+		|| _wsaError == WSAEWOULDBLOCK//이 오류는 즉시 완료할 수 없는 비블로킹 소켓의 작업에서 반환됩니다
+		|| _wsaError == WSAEFAULT)//주소가 잘못되었습니다. 애플리케이션이 잘못된 포인터 값을 전달하거나 버퍼의 길이가 너무 작은 경우에 발생
+		
 	{
 		return;
 	}

@@ -119,9 +119,6 @@ bool netPacketProc_MOVE_START(Session* pSession, char* pPacket)
 		abs(pSession->_Y - pMoveStart->_Y) > dfERROR_RANGE)
 	{
 		Disconnect(pSession);
-		printf("netPacketProc_MoveStart abs error\n");
-		printf("pSession->_X %d\n", pSession->_X);
-		printf("pMoveStart->_X %d\n", pMoveStart->_X);
 		return false;
 	}
 
@@ -224,88 +221,67 @@ bool netPacketProc_ATTACK1(Session* pSession, char* pPacket)
 	mp_ATTACK1(&st_SC_ATTACK1_HAEDER, &st_SC_ATTACK1, pSession->_Id, pSession->_Direction, pSession->_X, pSession->_Y);
 	sendBroadCast(pSession, (char*)&st_SC_ATTACK1_HAEDER, (char*)&st_SC_ATTACK1, sizeof(st_dfPACKET_SC_ATTACK1));
 
-	switch (pSession->_Direction)
+	//범위내에 적이 있는지 확인하고 적이 있다면 모두 타격한다.
+	for (auto session_it = Session_List.begin(); session_it != Session_List.end(); ++session_it)
 	{
-	case dfPACKET_MOVE_DIR_LL:
-	{
-		for (auto session_it = Session_List.begin(); session_it != Session_List.end(); ++session_it)
+		if ((*session_it)->_Live == false)
 		{
-			if ((*session_it)->_Live == false)
-			{
-				continue;//죽어있는 패킷 무시
-			}
+			continue;//죽어있는 패킷 무시
+		}
 
-			if (pSession->_Id == (*session_it)->_Id)
-			{
-				continue;
-			}
+		if (pSession->_Id == (*session_it)->_Id)//나 자신이라면 제외한다.
+		{
+			continue;
+		}
 
-			if ((pSession->_X - dfATTACK1_RANGE_X <= (*session_it)->_X
-				&& pSession->_X >= (*session_it)->_X)
-				&& ((pSession->_Y - dfATTACK1_RANGE_Y <= (*session_it)->_Y
-				&& pSession->_Y >= (*session_it)->_Y)
-				|| (pSession->_Y + dfATTACK1_RANGE_Y >= (*session_it)->_Y
-				&& pSession->_Y <= (*session_it)->_Y)))//80범위 내에 존재하는 타겟이 있다면?
+		switch (pSession->_Direction)//왼쪽 오른쪽 구분
+		{
+			case dfPACKET_MOVE_DIR_LL: 
 			{
-				(*session_it)->_HP -= dfATTACK1_DAMAGE;//맞은 대상의 HP를 깎는다.
-
-				if ((*session_it)->_HP <= 0)
+				if ((pSession->_X - dfATTACK1_RANGE_X <= (*session_it)->_X
+					&& pSession->_X >= (*session_it)->_X)
+					&& (abs(pSession->_Y - (*session_it)->_Y) <= dfATTACK1_RANGE_Y))
 				{
-					Disconnect((*session_it));//클라이언트가 죽었으므로 종료
+					(*session_it)->_HP -= dfATTACK1_DAMAGE;//맞은 대상의 HP를 깎는다.
+
+					if ((*session_it)->_HP <= 0)
+					{
+						Disconnect((*session_it));//클라이언트가 죽었으므로 종료
+					}
+					else
+					{
+						st_dfPACKET_header st_SC_DAMAGE_HEADER;
+						st_dfPACKET_SC_DAMAGE st_SC_DAMAGE;
+						mp_DAMAGE(&st_SC_DAMAGE_HEADER, &st_SC_DAMAGE, pSession->_Id, (*session_it)->_Id, (*session_it)->_HP);
+						sendBroadCast(nullptr, (char*)&st_SC_DAMAGE_HEADER, (char*)&st_SC_DAMAGE, sizeof(st_dfPACKET_SC_DAMAGE));
+					}
 				}
-				else
-				{
-					st_dfPACKET_header st_SC_DAMAGE_HEADER;
-					st_dfPACKET_SC_DAMAGE st_SC_DAMAGE;
-					mp_DAMAGE(&st_SC_DAMAGE_HEADER, &st_SC_DAMAGE, pSession->_Id, (*session_it)->_Id, (*session_it)->_HP);
-					sendBroadCast(nullptr, (char*)&st_SC_DAMAGE_HEADER, (char*)&st_SC_DAMAGE, sizeof(st_dfPACKET_SC_DAMAGE));
-				}
-				break;
 			}
+			break;
+			case dfPACKET_MOVE_DIR_RR:
+			{
+				if ((pSession->_X + dfATTACK1_RANGE_X >= (*session_it)->_X
+					&& pSession->_X <= (*session_it)->_X)
+					&& (abs(pSession->_Y - (*session_it)->_Y) <= dfATTACK1_RANGE_Y))
+				{
+					(*session_it)->_HP -= dfATTACK1_DAMAGE;//맞은 대상의 HP를 깎는다.
+
+					if ((*session_it)->_HP <= 0)
+					{
+						Disconnect((*session_it));//클라이언트가 죽었으므로 종료
+					}
+					else
+					{
+						st_dfPACKET_header st_SC_DAMAGE_HEADER;
+						st_dfPACKET_SC_DAMAGE st_SC_DAMAGE;
+						mp_DAMAGE(&st_SC_DAMAGE_HEADER, &st_SC_DAMAGE, pSession->_Id, (*session_it)->_Id, (*session_it)->_HP);
+						sendBroadCast(nullptr, (char*)&st_SC_DAMAGE_HEADER, (char*)&st_SC_DAMAGE, sizeof(st_dfPACKET_SC_DAMAGE));
+					}
+				}
+			}
+			break;
 		}
 	}
-	break;
-	case dfPACKET_MOVE_DIR_RR:
-	{
-		for (auto session_it = Session_List.begin(); session_it != Session_List.end(); ++session_it)
-		{
-			if ((*session_it)->_Live == false)
-			{
-				continue;//죽어있는 패킷 무시
-			}
-
-			if (pSession->_Id == (*session_it)->_Id)
-			{
-				continue;
-			}
-
-			if ((pSession->_X + dfATTACK1_RANGE_X >= (*session_it)->_X
-				&& pSession->_X <= (*session_it)->_X)
-				&& ((pSession->_Y - dfATTACK1_RANGE_Y <= (*session_it)->_Y
-					&& pSession->_Y >= (*session_it)->_Y)
-					|| (pSession->_Y + dfATTACK1_RANGE_Y >= (*session_it)->_Y
-						&& pSession->_Y <= (*session_it)->_Y)))//80범위 내에 존재하는 타겟이 있다면?
-			{
-				(*session_it)->_HP -= dfATTACK1_DAMAGE;//맞은 대상의 HP를 깎는다.
-
-				if ((*session_it)->_HP <= 0)
-				{
-					Disconnect((*session_it));//클라이언트가 죽었으므로 종료
-				}
-				else
-				{
-					st_dfPACKET_header st_SC_DAMAGE_HEADER;
-					st_dfPACKET_SC_DAMAGE st_SC_DAMAGE;
-					mp_DAMAGE(&st_SC_DAMAGE_HEADER, &st_SC_DAMAGE, pSession->_Id, (*session_it)->_Id, (*session_it)->_HP);
-					sendBroadCast(nullptr, (char*)&st_SC_DAMAGE_HEADER, (char*)&st_SC_DAMAGE, sizeof(st_dfPACKET_SC_DAMAGE));
-				}
-				break;
-			}
-		}
-	}
-	}
-
-
 #ifdef df_LOG
 	printf("PACKET_ATTACK1 # SessionID: %d / Direction:%d / X:%d / Y:%d\n", pSession->_Id, pSession->_Direction, pSession->_X, pSession->_Y);
 #endif
@@ -351,28 +327,26 @@ bool netPacketProc_ATTACK2(Session* pSession, char* pPacket)
 	mp_ATTACK2(&st_SC_ATTACK2_HAEDER, &st_SC_ATTACK2, pSession->_Id, pSession->_Direction, pSession->_X, pSession->_Y);
 	sendBroadCast(pSession, (char*)&st_SC_ATTACK2_HAEDER, (char*)&st_SC_ATTACK2, sizeof(st_dfPACKET_SC_ATTACK1));
 
-	switch (pSession->_Direction)
+	//범위내에 적이 있는지 확인하고 적이 있다면 모두 타격한다.
+	for (auto session_it = Session_List.begin(); session_it != Session_List.end(); ++session_it)
 	{
-	case dfPACKET_MOVE_DIR_LL:
-	{
-		for (auto session_it = Session_List.begin(); session_it != Session_List.end(); ++session_it)
+		if ((*session_it)->_Live == false)
 		{
-			if ((*session_it)->_Live == false)
-			{
-				continue;//죽어있는 패킷 무시
-			}
+			continue;//죽어있는 패킷 무시
+		}
 
-			if (pSession->_Id == (*session_it)->_Id)
-			{
-				continue;
-			}
+		if (pSession->_Id == (*session_it)->_Id)
+		{
+			continue;
+		}
 
+		switch (pSession->_Direction)
+		{
+		case dfPACKET_MOVE_DIR_LL:
+		{
 			if ((pSession->_X - dfATTACK2_RANGE_X <= (*session_it)->_X
 				&& pSession->_X >= (*session_it)->_X)
-				&& ((pSession->_Y - dfATTACK2_RANGE_Y <= (*session_it)->_Y
-				&& pSession->_Y >= (*session_it)->_Y)
-				|| (pSession->_Y + dfATTACK2_RANGE_Y >= (*session_it)->_Y
-				&& pSession->_Y <= (*session_it)->_Y)))//80범위 내에 존재하는 타겟이 있다면?
+				&& (abs(pSession->_Y - (*session_it)->_Y) <= dfATTACK2_RANGE_Y))
 			{
 				(*session_it)->_HP -= dfATTACK2_DAMAGE;//맞은 대상의 HP를 깎는다.
 
@@ -382,45 +356,19 @@ bool netPacketProc_ATTACK2(Session* pSession, char* pPacket)
 				}
 				else
 				{
-					//st_dfPACKET_header st_SC_DAMAGE_HEADER;
-					//st_SC_DAMAGE_HEADER.byCode = PACKET_CODE;
-					//st_SC_DAMAGE_HEADER.bySize = sizeof(st_dfPACKET_SC_DAMAGE);
-					//st_SC_DAMAGE_HEADER.byType = dfPACKET_SC_DAMAGE;
-
-					//st_dfPACKET_SC_DAMAGE st_SC_DAMAGE;
-					//st_SC_DAMAGE.Hp = (*session_it)->_HP;
-					//st_SC_DAMAGE._Attack_Id = pSession->_Id;
-					//st_SC_DAMAGE._Damage_Id = (*session_it)->_Id;
 					st_dfPACKET_header st_SC_DAMAGE_HEADER;
 					st_dfPACKET_SC_DAMAGE st_SC_DAMAGE;
 					mp_DAMAGE(&st_SC_DAMAGE_HEADER, &st_SC_DAMAGE, pSession->_Id, (*session_it)->_Id, (*session_it)->_HP);
 					sendBroadCast(nullptr, (char*)&st_SC_DAMAGE_HEADER, (char*)&st_SC_DAMAGE, sizeof(st_dfPACKET_SC_DAMAGE));
 				}
-				break;
 			}
 		}
-	}
-	break;
-	case dfPACKET_MOVE_DIR_RR:
-	{
-		for (auto session_it = Session_List.begin(); session_it != Session_List.end(); ++session_it)
+		break;
+		case dfPACKET_MOVE_DIR_RR:
 		{
-			if ((*session_it)->_Live == false)
-			{
-				continue;//죽어있는 패킷 무시
-			}
-
-			if (pSession->_Id == (*session_it)->_Id)
-			{
-				continue;
-			}
-
 			if ((pSession->_X + dfATTACK2_RANGE_X >= (*session_it)->_X
 				&& pSession->_X <= (*session_it)->_X)
-				&& ((pSession->_Y - dfATTACK2_RANGE_Y <= (*session_it)->_Y
-					&& pSession->_Y >= (*session_it)->_Y)
-					|| (pSession->_Y + dfATTACK2_RANGE_Y >= (*session_it)->_Y
-						&& pSession->_Y <= (*session_it)->_Y)))//80범위 내에 존재하는 타겟이 있다면?
+				&& (abs(pSession->_Y - (*session_it)->_Y) <= dfATTACK2_RANGE_Y))
 			{
 				(*session_it)->_HP -= dfATTACK2_DAMAGE;//맞은 대상의 HP를 깎는다.
 
@@ -435,10 +383,10 @@ bool netPacketProc_ATTACK2(Session* pSession, char* pPacket)
 					mp_DAMAGE(&st_SC_DAMAGE_HEADER, &st_SC_DAMAGE, pSession->_Id, (*session_it)->_Id, (*session_it)->_HP);
 					sendBroadCast(nullptr, (char*)&st_SC_DAMAGE_HEADER, (char*)&st_SC_DAMAGE, sizeof(st_dfPACKET_SC_DAMAGE));
 				}
-				break;
 			}
 		}
-	}
+		break;
+		}
 	}
 
 #ifdef df_LOG
@@ -449,7 +397,6 @@ bool netPacketProc_ATTACK2(Session* pSession, char* pPacket)
 
 void mp_ATTACK2(st_dfPACKET_header* pHeader, st_dfPACKET_SC_ATTACK2* pPacket, int p_id, int p_Direction, int p_X, int p_Y)
 {
-
 	pHeader->byCode = PACKET_CODE;
 	pHeader->bySize = sizeof(st_dfPACKET_SC_MOVE_STOP);
 	pHeader->byType = dfPACKET_SC_ATTACK2;
@@ -483,88 +430,67 @@ bool netPacketProc_ATTACK3(Session* pSession, char* pPacket)
 	mp_ATTACK3(&st_SC_ATTACK3_HAEDER, &st_SC_ATTACK3, pSession->_Id, pSession->_Direction, pSession->_X, pSession->_Y);
 	sendBroadCast(pSession, (char*)&st_SC_ATTACK3_HAEDER, (char*)&st_SC_ATTACK3, sizeof(st_dfPACKET_SC_ATTACK3));
 
-	switch (pSession->_Direction)
+	//범위내에 적이 있는지 확인하고 적이 있다면 모두 타격한다.
+	for (auto session_it = Session_List.begin(); session_it != Session_List.end(); ++session_it)
 	{
-	case dfPACKET_MOVE_DIR_LL:
-	{
-		for (auto session_it = Session_List.begin(); session_it != Session_List.end(); ++session_it)
+		if ((*session_it)->_Live == false)
 		{
-			if ((*session_it)->_Live == false)
-			{
-				continue;//죽어있는 패킷 무시
-			}
+			continue;//죽어있는 패킷 무시
+		}
 
-			if (pSession->_Id == (*session_it)->_Id)
-			{
-				continue;
-			}
+		if (pSession->_Id == (*session_it)->_Id)
+		{
+			continue;
+		}
 
-			if ((pSession->_X - dfATTACK3_RANGE_X <= (*session_it)->_X
-				&& pSession->_X >= (*session_it)->_X)
-				&& ((pSession->_Y - dfATTACK3_RANGE_Y <= (*session_it)->_Y
-					&& pSession->_Y >= (*session_it)->_Y)
-					|| (pSession->_Y + dfATTACK3_RANGE_Y >= (*session_it)->_Y
-						&& pSession->_Y <= (*session_it)->_Y)))//80범위 내에 존재하는 타겟이 있다면?
+		switch (pSession->_Direction)
+		{
+			case dfPACKET_MOVE_DIR_LL:
 			{
-				(*session_it)->_HP -= dfATTACK3_DAMAGE;//맞은 대상의 HP를 깎는다.
-
-				if ((*session_it)->_HP <= 0)
+				if ((pSession->_X - dfATTACK3_RANGE_X <= (*session_it)->_X
+					&& pSession->_X >= (*session_it)->_X)
+					&& (abs(pSession->_Y - (*session_it)->_Y) <= dfATTACK3_RANGE_Y))
 				{
-					Disconnect((*session_it));//클라이언트가 죽었으므로 종료
+					(*session_it)->_HP -= dfATTACK3_DAMAGE;//맞은 대상의 HP를 깎는다.
+
+					if ((*session_it)->_HP <= 0)
+					{
+						Disconnect((*session_it));//클라이언트가 죽었으므로 종료
+					}
+					else
+					{
+						st_dfPACKET_header st_SC_DAMAGE_HEADER;
+						st_dfPACKET_SC_DAMAGE st_SC_DAMAGE;
+						mp_DAMAGE(&st_SC_DAMAGE_HEADER, &st_SC_DAMAGE, pSession->_Id, (*session_it)->_Id, (*session_it)->_HP);
+						sendBroadCast(nullptr, (char*)&st_SC_DAMAGE_HEADER, (char*)&st_SC_DAMAGE, sizeof(st_dfPACKET_SC_DAMAGE));
+					}
 				}
-				else
-				{
-					st_dfPACKET_header st_SC_DAMAGE_HEADER;
-					st_dfPACKET_SC_DAMAGE st_SC_DAMAGE;
-					mp_DAMAGE(&st_SC_DAMAGE_HEADER, &st_SC_DAMAGE, pSession->_Id, (*session_it)->_Id, (*session_it)->_HP);
-					sendBroadCast(nullptr, (char*)&st_SC_DAMAGE_HEADER, (char*)&st_SC_DAMAGE, sizeof(st_dfPACKET_SC_DAMAGE));
-				}
-				break;
 			}
+			break;
+			case dfPACKET_MOVE_DIR_RR:
+			{
+				if ((pSession->_X + dfATTACK3_RANGE_X >= (*session_it)->_X
+					&& pSession->_X <= (*session_it)->_X)
+					&& (abs(pSession->_Y - (*session_it)->_Y) <= dfATTACK3_RANGE_Y))
+				{
+					(*session_it)->_HP -= dfATTACK3_DAMAGE;//맞은 대상의 HP를 깎는다.
+
+					if ((*session_it)->_HP <= 0)
+					{
+						Disconnect((*session_it));//클라이언트가 죽었으므로 종료
+					}
+					else
+					{
+						st_dfPACKET_header st_SC_DAMAGE_HEADER;
+						st_dfPACKET_SC_DAMAGE st_SC_DAMAGE;
+						mp_DAMAGE(&st_SC_DAMAGE_HEADER, &st_SC_DAMAGE, pSession->_Id, (*session_it)->_Id, (*session_it)->_HP);
+						sendBroadCast(nullptr, (char*)&st_SC_DAMAGE_HEADER, (char*)&st_SC_DAMAGE, sizeof(st_dfPACKET_SC_DAMAGE));
+					}
+				}
+			}
+			break;
 		}
 	}
-	break;
-	case dfPACKET_MOVE_DIR_RR:
-	{
-		for (auto session_it = Session_List.begin(); session_it != Session_List.end(); ++session_it)
-		{
-			if ((*session_it)->_Live == false)
-			{
-				continue;//죽어있는 패킷 무시
-			}
-
-			if (pSession->_Id == (*session_it)->_Id)
-			{
-				continue;
-			}
-
-			if ((pSession->_X + dfATTACK3_RANGE_X >= (*session_it)->_X
-				&& pSession->_X <= (*session_it)->_X)
-				&& ((pSession->_Y - dfATTACK3_RANGE_Y <= (*session_it)->_Y
-					&& pSession->_Y >= (*session_it)->_Y)
-					|| (pSession->_Y + dfATTACK3_RANGE_Y >= (*session_it)->_Y
-						&& pSession->_Y <= (*session_it)->_Y)))//80범위 내에 존재하는 타겟이 있다면?
-			{
-				(*session_it)->_HP -= dfATTACK3_DAMAGE;//맞은 대상의 HP를 깎는다.
-
-				if ((*session_it)->_HP <= 0)
-				{
-					Disconnect((*session_it));//클라이언트가 죽었으므로 종료
-				}
-				else
-				{
-					st_dfPACKET_header st_SC_DAMAGE_HEADER;
-					st_dfPACKET_SC_DAMAGE st_SC_DAMAGE;
-					mp_DAMAGE(&st_SC_DAMAGE_HEADER, &st_SC_DAMAGE, pSession->_Id, (*session_it)->_Id, (*session_it)->_HP);
-					sendBroadCast(nullptr, (char*)&st_SC_DAMAGE_HEADER, (char*)&st_SC_DAMAGE, sizeof(st_dfPACKET_SC_DAMAGE));
-				}
-				break;
-			}
-		}
-	}
-	}
-
-
 #ifdef df_LOG
 	printf("PACKET_ATTACK3 # SessionID: %d / Direction:%d / X:%d / Y:%d\n", pSession->_Id, pSession->_Direction, pSession->_X, pSession->_Y);
 #endif
@@ -584,7 +510,6 @@ void mp_ATTACK3(st_dfPACKET_header* pHeader, st_dfPACKET_SC_ATTACK3* pPacket, in
 	pPacket->_X = p_X;//위치X
 	pPacket->_Y = p_Y;//위치Y
 }
-
 
 //dfPACKET_SC_DAMAGE
 //bool netPacketProc_DAMAGE(Session* pSession, char* pPacket)
