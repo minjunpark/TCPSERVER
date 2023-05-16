@@ -11,10 +11,11 @@
 #include <memory.h>
 #include <Windows.h>
 #include <time.h>
-#include "TRingBuffer.h"
+#include "CRingBuffer.h"
 #include "CList.h"
 #include "enum_Server.h"
 #include "st_Packet.h"
+#include "CSerealBuffer.h"
 #define df_LOG//로그 켜고싶으면 세팅
 
 
@@ -30,7 +31,11 @@ void SendProc(Session* session);//유저에게 데이터를 보낼때
 void sendUniCast(Session* session, char* _header, char* _Msg, int size);
 void sendBroadCast(Session* session, char* _header, char* _Msg, int size);
 
-bool PacketProc(Session* pSession, BYTE byPacketType, char* pPacket);//패킷 전송 과정
+void sendUniCast(Session* session, CSerealBuffer* pPacket);
+void sendBroadCast(Session* session, CSerealBuffer* pPacket);
+
+bool PacketProc(Session* pSession, BYTE byPacketType, CSerealBuffer* pPacket);//패킷 전송 과정
+
 void Disconnect(Session* session);//연결끊기 Session _Live를 false로 바꿔죽인다.
 void Disconnect_Clean();//네트워크 마지막에 죽은세션을 정리한다.
 
@@ -138,6 +143,7 @@ void Logic()
 	else //20미리 이상 지났다면 다시 시간초기화
 		dwStarttick = timeGetTime();
 
+	//모든 연결 세션을 돌면서 로직을 수행한다.
 	for (auto _Session_it = Session_List.begin(); _Session_it != Session_List.end(); ++_Session_it)
 	{
 		if ((*_Session_it)->_Direction_check != ON_MOVE || (*_Session_it)->_Live != true)
@@ -146,13 +152,13 @@ void Logic()
 			continue;//죽어있는 세션이라면 계산을 하지 않는다.
 		}
 
-		if ((*_Session_it)->_HP <= 0)//Hp가 전부달아버린 세션이라면 세션을 죽이고 연결하지 않는다.
+		if ((*_Session_it)->_HP <= 0)//Hp가 전부달아버린 세션이라면 세션을 죽이고 로직계산을 하지 않는다.
 		{
 			Disconnect((*_Session_it));
 			continue;
 		}
 
-		//범위를 초과하고 있는 녀석은 더이상 로직에서 움직이게 하지 않는다.
+		//범위를 초과하고 있는 세션은 더이상 로직에서 움직이게 하지 않는다.
 		if ((*_Session_it)->_X < dfRANGE_MOVE_LEFT
 			|| (*_Session_it)->_X > dfRANGE_MOVE_RIGHT
 			|| (*_Session_it)->_Y < dfRANGE_MOVE_TOP
@@ -164,79 +170,79 @@ void Logic()
 		//살아있으면서 움직이고 있는 세션이라면 원하는 방향으로 값을 이동시킨다.
 		switch ((*_Session_it)->_Direction)
 		{
-		case dfPACKET_MOVE_DIR_LL:
-		{
-			(*_Session_it)->_X -= defualt_MOVE_X;
-#ifdef df_LOG
-			printf("gameRun:LL # SessionID:%d / X:%d / Y:%d\n", (*_Session_it)->_Id, (*_Session_it)->_X, (*_Session_it)->_Y);
-#endif
-		}
-		break;
-		case dfPACKET_MOVE_DIR_LU:
-		{
-			(*_Session_it)->_X -= defualt_MOVE_X;
-			(*_Session_it)->_Y -= defualt_MOVE_Y;
-#ifdef df_LOG
-			printf("gameRun:LU # SessionID:%d / X:%d / Y:%d\n", (*_Session_it)->_Id, (*_Session_it)->_X, (*_Session_it)->_Y);
-#endif
-		}
-		break;
-		case dfPACKET_MOVE_DIR_UU:
-		{
-			(*_Session_it)->_Y -= defualt_MOVE_Y;
-#ifdef df_LOG
-			printf("gameRun:UU # SessionID:%d / X:%d / Y:%d\n", (*_Session_it)->_Id, (*_Session_it)->_X, (*_Session_it)->_Y);
-#endif
-		}
-		break;
-		case dfPACKET_MOVE_DIR_RU:
-		{
-			(*_Session_it)->_X += defualt_MOVE_X;
-			(*_Session_it)->_Y -= defualt_MOVE_Y;
-#ifdef df_LOG
-			printf("gameRun:RU # SessionID:%d / X:%d / Y:%d\n", (*_Session_it)->_Id, (*_Session_it)->_X, (*_Session_it)->_Y);
-#endif
-		}
-		break;
-		case dfPACKET_MOVE_DIR_RR:
-		{
-			(*_Session_it)->_X += defualt_MOVE_X;
-#ifdef df_LOG
-			printf("gameRun:RR # SessionID:%d / X:%d / Y:%d\n", (*_Session_it)->_Id, (*_Session_it)->_X, (*_Session_it)->_Y);
-#endif
-		}
-		break;
-		case dfPACKET_MOVE_DIR_RD:
-		{
-			(*_Session_it)->_X += defualt_MOVE_X;
-			(*_Session_it)->_Y += defualt_MOVE_Y;
-#ifdef df_LOG
-			printf("gameRun:RD # SessionID:%d / X:%d / Y:%d\n", (*_Session_it)->_Id, (*_Session_it)->_X, (*_Session_it)->_Y);
-#endif
-		}
-		break;
-		case dfPACKET_MOVE_DIR_DD:
-		{
-			(*_Session_it)->_Y += defualt_MOVE_Y;
-#ifdef df_LOG
-			printf("gameRun:DD # SessionID:%d / X:%d / Y:%d\n", (*_Session_it)->_Id, (*_Session_it)->_X, (*_Session_it)->_Y);
-#endif
-		}
-		break;
-		case dfPACKET_MOVE_DIR_LD:
-		{
-			(*_Session_it)->_X -= defualt_MOVE_X;
-			(*_Session_it)->_Y += defualt_MOVE_Y;
-#ifdef df_LOG
-			printf("gameRun:LD # SessionID:%d / X:%d / Y:%d\n", (*_Session_it)->_Id, (*_Session_it)->_X, (*_Session_it)->_Y);
-#endif
-		}
-		break;
+			case dfPACKET_MOVE_DIR_LL:
+			{
+				(*_Session_it)->_X -= defualt_MOVE_X;
+	#ifdef df_LOG
+				printf("gameRun:LL # SessionID:%d / X:%d / Y:%d\n", (*_Session_it)->_Id, (*_Session_it)->_X, (*_Session_it)->_Y);
+	#endif
+			}
+			break;
+			case dfPACKET_MOVE_DIR_LU:
+			{
+				(*_Session_it)->_X -= defualt_MOVE_X;
+				(*_Session_it)->_Y -= defualt_MOVE_Y;
+	#ifdef df_LOG
+				printf("gameRun:LU # SessionID:%d / X:%d / Y:%d\n", (*_Session_it)->_Id, (*_Session_it)->_X, (*_Session_it)->_Y);
+	#endif
+			}
+			break;
+			case dfPACKET_MOVE_DIR_UU:
+			{
+				(*_Session_it)->_Y -= defualt_MOVE_Y;
+	#ifdef df_LOG
+				printf("gameRun:UU # SessionID:%d / X:%d / Y:%d\n", (*_Session_it)->_Id, (*_Session_it)->_X, (*_Session_it)->_Y);
+	#endif
+			}
+			break;
+			case dfPACKET_MOVE_DIR_RU:
+			{
+				(*_Session_it)->_X += defualt_MOVE_X;
+				(*_Session_it)->_Y -= defualt_MOVE_Y;
+	#ifdef df_LOG
+				printf("gameRun:RU # SessionID:%d / X:%d / Y:%d\n", (*_Session_it)->_Id, (*_Session_it)->_X, (*_Session_it)->_Y);
+	#endif
+			}
+			break;
+			case dfPACKET_MOVE_DIR_RR:
+			{
+				(*_Session_it)->_X += defualt_MOVE_X;
+	#ifdef df_LOG
+				printf("gameRun:RR # SessionID:%d / X:%d / Y:%d\n", (*_Session_it)->_Id, (*_Session_it)->_X, (*_Session_it)->_Y);
+	#endif
+			}
+			break;
+			case dfPACKET_MOVE_DIR_RD:
+			{
+				(*_Session_it)->_X += defualt_MOVE_X;
+				(*_Session_it)->_Y += defualt_MOVE_Y;
+	#ifdef df_LOG
+				printf("gameRun:RD # SessionID:%d / X:%d / Y:%d\n", (*_Session_it)->_Id, (*_Session_it)->_X, (*_Session_it)->_Y);
+	#endif
+			}
+			break;
+			case dfPACKET_MOVE_DIR_DD:
+			{
+				(*_Session_it)->_Y += defualt_MOVE_Y;
+	#ifdef df_LOG
+				printf("gameRun:DD # SessionID:%d / X:%d / Y:%d\n", (*_Session_it)->_Id, (*_Session_it)->_X, (*_Session_it)->_Y);
+	#endif
+			}
+			break;
+			case dfPACKET_MOVE_DIR_LD:
+			{
+				(*_Session_it)->_X -= defualt_MOVE_X;
+				(*_Session_it)->_Y += defualt_MOVE_Y;
+	#ifdef df_LOG
+				printf("gameRun:LD # SessionID:%d / X:%d / Y:%d\n", (*_Session_it)->_Id, (*_Session_it)->_X, (*_Session_it)->_Y);
+	#endif
+			}
+			break;
 		}
 	}
 };
 
-bool PacketProc(Session* pSession, BYTE byPacketType, char* pPacket)
+bool PacketProc(Session* pSession, BYTE byPacketType, CSerealBuffer* pPacket)
 {
 	switch (byPacketType)
 	{
@@ -292,8 +298,8 @@ void AcceptProc()
 #endif
 	//1.지금 연결된 유저 세션을 생성한다.
 	Session* NewSession = new Session;
-	NewSession->_SendBuf = new TRingBuffer;
-	NewSession->_RecvBuf = new TRingBuffer;
+	NewSession->_SendBuf = new CRingBuffer;
+	NewSession->_RecvBuf = new CRingBuffer;
 	NewSession->_Direction = default_Direction;
 	NewSession->_Direction_check = ON_STOP;
 	NewSession->_Sock = client_sock;//sock을 세팅하고
@@ -316,13 +322,10 @@ void AcceptProc()
 			st_other_header.bySize = sizeof(st_dfPACKET_SC_CREATE_OTHER_CHARACTER);
 			st_other_header.byType = dfPACKET_SC_CREATE_OTHER_CHARACTER;
 
-			st_dfPACKET_SC_CREATE_OTHER_CHARACTER st_other_create;
-			st_other_create._Id = (*_Session_it)->_Id;
-			st_other_create._Direction = (*_Session_it)->_Direction;
-			st_other_create._X = (*_Session_it)->_X;
-			st_other_create._Y = (*_Session_it)->_Y;
-			st_other_create.HP = (*_Session_it)->_HP;
-			sendUniCast(NewSession, (char*)&st_other_header, (char*)&st_other_create, sizeof(st_dfPACKET_SC_CREATE_OTHER_CHARACTER));
+			CSerealBuffer pPacket;
+			pPacket.PutData((char*)&st_other_header,sizeof(st_dfPACKET_header));
+			pPacket << (*_Session_it)->_Id << (*_Session_it)->_Direction << (*_Session_it)->_X << (*_Session_it)->_Y << (*_Session_it)->_HP;
+			sendUniCast(NewSession, &pPacket);//나 자신을 제외하고 데이터전부잇풋
 		}
 	}
 
@@ -330,8 +333,14 @@ void AcceptProc()
 	Session_List.push_back(NewSession);
 
 	//5.생성된 나를 모든 유저에게 전달한다.
-	PacketProc(NewSession, dfPACKET_SC_CREATE_OTHER_CHARACTER, nullptr);
+	CSerealBuffer pPacket;
+	pPacket << NewSession->_Id;
+	pPacket << NewSession->_Direction;
+	pPacket << NewSession->_X;
+	pPacket << NewSession->_Y;
+	pPacket << NewSession->_HP;
 
+	PacketProc(NewSession, dfPACKET_SC_CREATE_OTHER_CHARACTER, &pPacket);
 };//접속유저가 새로 생겼을때
 
 void RecvProc(Session* session)//유저가 데이터를 보내왔을때
@@ -367,18 +376,22 @@ void RecvProc(Session* session)//유저가 데이터를 보내왔을때
 		}
 		return;
 	}
+	
+	tmpSesion->_RecvBuf->MoveRear(retRecv);//받은만큼 이동시킨다.
 
-	tmpSesion->_RecvBuf->MoveRear(retRecv);
+	CSerealBuffer cpPacket;
 
 	while (1)
 	{
+		int retSwitchDeq;
+		int retCS;
+		int retPeek;
+		
 		if (tmpSesion->_RecvBuf->GetUseSize() < sizeof(st_dfPACKET_header))//사용할수 있는사이즈가 헤더이하라면
-		{
 			break;
-		}
 
 		st_dfPACKET_header st_recv_header;
-		int retPeek = tmpSesion->_RecvBuf->Peek((char*)&st_recv_header, sizeof(st_dfPACKET_header));//헤더크기만큼 꺼내기
+		retPeek = tmpSesion->_RecvBuf->Peek((char*)&st_recv_header, sizeof(st_dfPACKET_header));//헤더크기만큼 꺼내기
 
 		if (retPeek != sizeof(st_dfPACKET_header))//값이 다르면 애초에 박살나는것이기 때문에 브레이크
 		{
@@ -386,90 +399,49 @@ void RecvProc(Session* session)//유저가 데이터를 보내왔을때
 			break;
 		}
 
-		if (tmpSesion->_RecvBuf->GetUseSize() < sizeof(st_dfPACKET_header) + st_recv_header.bySize)//헤더에 적힌 사이즈 보다 작으므로 처리를 할수가 없으므로
-		{
+		if (tmpSesion->_RecvBuf->GetUseSize() < sizeof(st_dfPACKET_header) + st_recv_header.bySize)//헤더에 적힌 사이즈 보다 작으므로 더 받는절차를 거쳐야하므로 정지한다.
 			break;
-		}
+
 		//헤더에서 읽어온 크기만큼 버퍼에 존재한다면?
 		tmpSesion->_RecvBuf->MoveFront(sizeof(st_dfPACKET_header));//헤더크기만큼 버퍼의 읽기포인터를 이동시킨다.		
+		
+		//직렬화버퍼 작업
+		retSwitchDeq = tmpSesion->_RecvBuf->Dequeue(cpPacket.GetBufferPtr(), st_recv_header.bySize);//사이즈만큼 직렬화 버퍼에 디큐한다.
 
-		switch (st_recv_header.byType)//byType으로 판단한다.
+		if (retSwitchDeq != st_recv_header.bySize)//헤더에 적힌 사이즈만큼 있다고 판별된 상황에서 사이즈만큼 가져오지 못한다면 버퍼가 깨진것이므로 연결을 끊고 세션을 파괴한다.
 		{
-			int retSwitchDeq;
-		case dfPACKET_CS_MOVE_START:
+			Disconnect(tmpSesion);
+			return;
+		}
+
+		retCS = cpPacket.MoveWritePos(retSwitchDeq);//데이터를 받은만큼 직렬화 버퍼를 이동시킨다.
+
+		if (retCS != retSwitchDeq)//직렬화 버퍼가 이동하지 못했다면 파괴한다.
 		{
-			st_dfPACKET_CS_MOVE_START st_CS_MOVE_START;
-			retSwitchDeq = tmpSesion->_RecvBuf->Dequeue((char*)&st_CS_MOVE_START, st_recv_header.bySize);//사이즈만큼 디큐한다.
-
-			if (retSwitchDeq != st_recv_header.bySize)
-			{
-				Disconnect(tmpSesion);
-				return;
-			}
-
-			PacketProc(tmpSesion, dfPACKET_CS_MOVE_START, (char*)&st_CS_MOVE_START);
-
-			//tmpSesion->_RecvBuf->MoveFront(retSwitchDeq);
+			Disconnect(tmpSesion);
+			return;
 		}
-		break;
-		case dfPACKET_CS_MOVE_STOP://정지
+
+		switch (st_recv_header.byType)//byType으로 패킷을 판별해 그 기능을 수행하도록한다.
 		{
-			st_dfPACKET_CS_MOVE_STOP st_CS_MOVE_STOP;
-			retSwitchDeq = tmpSesion->_RecvBuf->Dequeue((char*)&st_CS_MOVE_STOP, st_recv_header.bySize);//사이즈만큼 디큐한다.
-
-			if (retSwitchDeq != st_recv_header.bySize)//사이즈만큼 가져오지 못한다면 버퍼가 깨진것이므로 연결을 끊고 세션을 파괴한다.
-			{
-				Disconnect(tmpSesion);
-				return;
-			}
-
-			PacketProc(tmpSesion, dfPACKET_CS_MOVE_STOP, (char*)&st_CS_MOVE_STOP);
-			//tmpSesion->_RecvBuf->MoveFront(retSwitchDeq);
+			case dfPACKET_CS_MOVE_START:
+				PacketProc(tmpSesion, dfPACKET_CS_MOVE_START, &cpPacket);
+				break;
+			case dfPACKET_CS_MOVE_STOP://정지
+				PacketProc(tmpSesion, dfPACKET_CS_MOVE_STOP, &cpPacket);
+				break;
+			case dfPACKET_CS_ATTACK1://공격
+				PacketProc(tmpSesion, dfPACKET_CS_ATTACK1, &cpPacket);
+				break;
+			case dfPACKET_CS_ATTACK2://공격2
+				PacketProc(tmpSesion, dfPACKET_CS_ATTACK2, &cpPacket);
+				break;
+			case dfPACKET_CS_ATTACK3://공격3
+				PacketProc(tmpSesion, dfPACKET_CS_ATTACK3, &cpPacket);
+				break;
 		}
-		break;
-		case dfPACKET_CS_ATTACK1://공격
-		{
-			st_dfPACKET_CS_ATTACK1 st_CS_ATTACK1;
-			retSwitchDeq = tmpSesion->_RecvBuf->Dequeue((char*)&st_CS_ATTACK1, st_recv_header.bySize);//사이즈만큼 디큐한다.
-			if (retSwitchDeq != st_recv_header.bySize)
-			{
-				Disconnect(tmpSesion);
-				return;
-			}
 
-			PacketProc(tmpSesion, dfPACKET_CS_ATTACK1, (char*)&st_CS_ATTACK1);
-			//tmpSesion->_RecvBuf->MoveFront(retSwitchDeq);
-		}
-		break;
-		case dfPACKET_CS_ATTACK2://공격2
-		{
-			st_dfPACKET_CS_ATTACK2 st_CS_ATTACK2;
-			retSwitchDeq = tmpSesion->_RecvBuf->Dequeue((char*)&st_CS_ATTACK2, st_recv_header.bySize);//사이즈만큼 디큐한다.
-			if (retSwitchDeq != st_recv_header.bySize)
-			{
-				Disconnect(tmpSesion);
-				return;
-			}
-
-			PacketProc(tmpSesion, dfPACKET_CS_ATTACK2, (char*)&st_CS_ATTACK2);
-			//tmpSesion->_RecvBuf->MoveFront(retSwitchDeq);
-		}
-		break;
-		case dfPACKET_CS_ATTACK3://공격3
-		{
-			st_dfPACKET_CS_ATTACK3 st_CS_ATTACK3;
-			retSwitchDeq = tmpSesion->_RecvBuf->Dequeue((char*)&st_CS_ATTACK3, st_recv_header.bySize);//사이즈만큼 디큐한다.
-			if (retSwitchDeq != st_recv_header.bySize)
-			{
-				Disconnect(tmpSesion);
-				return;
-			}
-
-			PacketProc(tmpSesion, dfPACKET_CS_ATTACK3, (char*)&st_CS_ATTACK3);
-			//tmpSesion->_RecvBuf->MoveFront(retSwitchDeq);
-		}
-		break;
-		}
+		cpPacket.Clear();//직렬화 버퍼 재사용을 위한 초기화
 	}
 
 };
@@ -477,9 +449,8 @@ void RecvProc(Session* session)//유저가 데이터를 보내왔을때
 void SendProc(Session* session)
 {
 	int retSend;
-
-	retSend = send(session->_Sock, session->_SendBuf->GetFrontBufferPtr(),
-		session->_SendBuf->DirectDequeueSize(), 0);//가져온만큼 전송
+	//읽기 버퍼 포인터에서 보낼수있는 크기만큼 최대한 보낸다.
+	retSend = send(session->_Sock, session->_SendBuf->GetFrontBufferPtr(), session->_SendBuf->DirectDequeueSize(), 0);
 
 	if (retSend == SOCKET_ERROR)//소켓 자체에 문제가 생겼다는 뜻이므로
 	{
@@ -491,7 +462,7 @@ void SendProc(Session* session)
 			return;//송신버퍼가 비어있다는 뜻이므로 루프를 탈출한다.
 		}
 	}
-	else if (retSend == 0)
+	else if (retSend == 0)//연결 종료상태
 	{
 		int wsaError = WSAGetLastError();//소켓에러값
 		//log_msg(wsaError);
@@ -502,21 +473,17 @@ void SendProc(Session* session)
 		}
 	}
 
-	//if (retSend != retPeek)//긁어온것과 보낸양이 다르다? 링버퍼가 박살나서 이상하게 만들어진것이다 연결을 종료하고 로그를 남겨야한다.
-	//{
-	//	Disconnect(session);
-	//	return;
-	//}
-
 	if (retSend != session->_SendBuf->DirectDequeueSize())//긁어온것과 보낸양이 다르다? 링버퍼가 박살나서 이상하게 만들어진것이다 연결을 종료하고 로그를 남겨야한다.
 	{
 		Disconnect(session);
 		return;
 	}
 
-	session->_SendBuf->MoveFront(retSend);//보낸만큼 읽은 포인터를 이동시킨다.
+	session->_SendBuf->MoveFront(retSend);//센드버퍼에 쌓은만큼 포인터를 이동시킨다.
 
 };//유저에게 데이터를 보낼때
+
+
 
 void sendUniCast(Session* session, char* _header, char* _Msg, int size)
 {
@@ -545,6 +512,53 @@ void sendUniCast(Session* session, char* _header, char* _Msg, int size)
 
 };//특정유저에게만 보내기
 
+void sendUniCast(Session* session, CSerealBuffer* pPacket)
+{
+	if (session->_Live == false)
+	{
+		return;//죽어있는패킷한테는안보낸다.
+	}
+
+	if (session->_SendBuf->GetFreeSize() >= pPacket->GetUseSize())//sendbuf에 직렬화버퍼크기만큼 넣는다.
+	{
+		int retUni;
+		retUni = session->_SendBuf->Enqueue(pPacket->GetBufferPtr(), pPacket->GetUseSize());//안들어가면 안들어가는데로 별상관없음 버퍼가 꽉찬거니까
+		if (retUni != pPacket->GetUseSize())
+		{
+			Disconnect(session);
+			return;
+		}
+	}
+}
+
+void sendBroadCast(Session* session, CSerealBuffer *pPacket)
+{
+	int retBro;
+	Session* stmp = session;//보내지 않을 유저
+
+	//모든 리스트를돌면서 확인한다.
+	for (auto session_it = Session_List.begin(); session_it != Session_List.end(); ++session_it)
+	{
+		if (stmp != nullptr && stmp->_Id == (*session_it)->_Id)//값이 같다면 이녀석은 보내지 않을녀석이니 캔슬한다.
+		{
+			continue;
+		}
+
+		if ((*session_it)->_Live == false)
+		{
+			continue;//죽어있는패킷한테는안보낸다.
+		}
+		//각세션의 센드버퍼에 enqueue시킨다.
+		if ((*session_it)->_SendBuf->GetFreeSize() >= pPacket->GetUseSize())//sendbuf에 넣을수있는 크기가 남아있다면
+		{
+			retBro = (*session_it)->_SendBuf->Enqueue(pPacket->GetBufferPtr(), pPacket->GetUseSize());//안들어가면 안들어가는데로 별상관없음 버퍼가 꽉찬거니까
+			if (retBro != pPacket->GetUseSize())//센드버퍼 자체가 고장났거나 송신버퍼가 가득찬경우 이므로 디스커넥트하고 끝내버린다.
+			{
+				Disconnect((*session_it));
+			}
+		}
+	}
+}
 void sendBroadCast(Session* session, char* _header, char* _Msg, int size)
 {
 	int retBro;
@@ -604,7 +618,6 @@ void Disconnect_Clean()//안정성을 위해 디스커넥트된 개체를 네트
 		if (_Session_Object->_Live == false) //세션 특정객체가 죽어있다면
 		{
 			PacketProc(_Session_Object, dfPACKET_SC_DELETE_CHARACTER, nullptr);
-
 			closesocket(_Session_Object->_Sock);
 			delete _Session_Object->_RecvBuf;//세션 받기버퍼 제거
 			delete _Session_Object->_SendBuf;//세션 보내기 버퍼 제거

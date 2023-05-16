@@ -1,6 +1,6 @@
 #pragma once
 
-class TRingBuffer
+class CRingBuffer
 {
 private:
 
@@ -10,9 +10,9 @@ private:
 	int _Rear;//쓰기 포인터 계산을 위한값
 public:
 
-	TRingBuffer(void);//사이즈가 없을경우의 생성자
-	TRingBuffer(int iBufferSize);//사이즈가 있을경우의 생성자
-	~TRingBuffer(void);//소멸자
+	CRingBuffer(void);//사이즈가 없을경우의 생성자
+	CRingBuffer(int iBufferSize);//사이즈가 있을경우의 생성자
+	~CRingBuffer(void);//소멸자
 
 	//크기함수
 	int GetBufferSize(void);//현재 버퍼의 최대 크기를 가져온다.
@@ -33,7 +33,7 @@ public:
 	char* GetRearBufferPtr(void);//쓰기포인터를 리턴
 	
 	void ClearBuffer(void);//버퍼를 초기화하기
-	void Resize(int size);//버퍼의 사이즈를 바꾸는 함수(나중에 고려해볼예정)
+	bool Resize(int size);//버퍼의 사이즈를 바꾸는 함수(나중에 고려해볼예정)
 
 private:
 	enum { VOID_VALUE = 8 };

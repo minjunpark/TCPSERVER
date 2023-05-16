@@ -128,15 +128,17 @@
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
+    <ClCompile Include="CSerealBuffer.cpp" />
     <ClCompile Include="main.cpp" />
-    <ClCompile Include="TRingBuffer.cpp" />
+    <ClCompile Include="CRingBuffer.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="CList.h" />
+    <ClInclude Include="CSerealBuffer.h" />
     <ClInclude Include="st_Packet.h" />
     <ClInclude Include="enum_Server.h" />
     <ClInclude Include="fun_Message.h" />
-    <ClInclude Include="TRingBuffer.h" />
+    <ClInclude Include="CRingBuffer.h" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">

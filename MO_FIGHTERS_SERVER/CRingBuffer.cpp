@@ -1,7 +1,7 @@
 #include "iostream"
-#include "TRingbuffer.h"
+#include "CRingBuffer.h"
 
-TRingBuffer::TRingBuffer()//디폴트 버퍼계산 10000바이트를 기본으로한다
+CRingBuffer::CRingBuffer()//디폴트 버퍼계산 10000바이트를 기본으로한다
 {
 	_Start = nullptr;
 	if (nullptr != _Start)
@@ -12,7 +12,7 @@ TRingBuffer::TRingBuffer()//디폴트 버퍼계산 10000바이트를 기본으로한다
 	_Start = new char[_BufferSize];
 }
 
-TRingBuffer::TRingBuffer(int iBufferSize)//들어온 크기만큼 버퍼를 생성 0이하면 생성을 애초에 안한다.
+CRingBuffer::CRingBuffer(int iBufferSize)//들어온 크기만큼 버퍼를 생성 0이하면 생성을 애초에 안한다.
 {
 	_Start = nullptr;
 	if (nullptr != _Start)
@@ -29,7 +29,7 @@ TRingBuffer::TRingBuffer(int iBufferSize)//들어온 크기만큼 버퍼를 생성 0이하면 �
 	_Start = new char[_BufferSize];
 }
 
-TRingBuffer::~TRingBuffer()//버퍼 소멸자
+CRingBuffer::~CRingBuffer()//버퍼 소멸자
 {
 	if (nullptr != _Start)
 		delete[] _Start;
@@ -43,30 +43,37 @@ TRingBuffer::~TRingBuffer()//버퍼 소멸자
 }
 
 
-void TRingBuffer::Resize(int size)
+bool CRingBuffer::Resize(int size)
 {
-	//char* _Old_Start = _Start;//버퍼 시작지점
-	//int _Old_BufferSize = _BufferSize;//총 버퍼 크기
-	//int _Old_Front = _Front;//읽기 포인터 계산을 위한값
-	//int _Old_Rear = _Rear;//쓰기 포인터 계산을 위한값
+	if (size <= 0)//음수라면 리사이즈를 실패
+		return false;
 
-	//char* _tmp_buffer = new char[size];//이동할 만큼의 크기의 버퍼를 미리만든다.
-	//
-	//int retresize = Peek(_tmp_buffer, GetUseSize());//모든 데이터를 복사해온다.
+	if (size <= _BufferSize)//리사이즈 하려는 크기가 원래 크기보다 작거나 같다면 실패->할이유가 없다.
+		return false;
 
-	//if (retresize != GetUseSize())//꺼내온 크기가 작다면
-	//{
-	//	delete[] _tmp_buffer;//실패했다면 원래버퍼를 뜯어온다.
-	//}
-	//else
-	//{
-	//	//성공했다면
-	//	delete[] _Start;//과거 버퍼를 힙에서 제거하고
-	//	_Start = _tmp_buffer;//새로운 버퍼를 세팅한다.
-	//	_BufferSize = size;
-	//	_Front = 0;
-	//	_Rear = 0;
-	//}
+	if (_Start == nullptr)//nullptr이라는건 에러가 발생한 상황이므로 정지한다.
+		return false;
+
+	char* temp = new char[_BufferSize];
+
+	int retResize = Peek(temp, GetUseSize());//모든 데이터를 복사해온다.
+
+	if (retResize != GetUseSize())//꺼내온 크기가 작다면
+	{
+		delete[] temp;//실패했다면 원래버퍼를 힙에서 제거한다.
+		return false;
+	}
+
+	delete[] _Start;//과거 버퍼를 힙에서 제거하고
+	_Start = new char[size];//새로운 버퍼를 세팅한다.
+	memcpy(_Start, temp, _BufferSize);//새로 만들어진 버퍼에 데이터를 넣는다.
+	_BufferSize = size;//변경된 사이즈로 만든후
+	_Front = 0;//읽기포인터는 맨앞
+	_Rear = retResize;//쓰기 포인터는 복사한 데이터만큼 이동시킨다.
+
+	delete[] temp;//그후 임시버퍼를 제거한다.
+
+	return true;
 };
 
 /////////////////////////////////////////////////////////////////////////
@@ -76,7 +83,7 @@ void TRingBuffer::Resize(int size)
 // Return: (int)최대의 크기 값.
 /////////////////////////////////////////////////////////////////////////
 
-int	TRingBuffer::GetBufferSize(void)
+int	CRingBuffer::GetBufferSize(void)
 {
 	if (_Start != nullptr)
 	{
@@ -92,7 +99,7 @@ int	TRingBuffer::GetBufferSize(void)
 // Return: (int)사용중인 용량.
 /////////////////////////////////////////////////////////////////////////
 
-int TRingBuffer::GetUseSize(void)
+int CRingBuffer::GetUseSize(void)
 {
 	if (_Front <= _Rear)
 	{
@@ -110,7 +117,7 @@ int TRingBuffer::GetUseSize(void)
 // Parameters: 없음.
 // Return: (int)남은용량.
 /////////////////////////////////////////////////////////////////////////
-int TRingBuffer::GetFreeSize(void)
+int CRingBuffer::GetFreeSize(void)
 {
 	return _BufferSize - (GetUseSize() + VOID_VALUE);
 }
@@ -125,7 +132,7 @@ int TRingBuffer::GetFreeSize(void)
 // Parameters: 없음.
 // Return: (int)사용가능 용량.
 ////////////////////////////////////////////////////////////////////////
-int TRingBuffer::DirectDequeueSize(void)
+int CRingBuffer::DirectDequeueSize(void)
 {
 	if (_Front <= _Rear)
 	{
@@ -137,7 +144,7 @@ int TRingBuffer::DirectDequeueSize(void)
 	}
 }
 
-int TRingBuffer::DirectEnqueueSize(void)
+int CRingBuffer::DirectEnqueueSize(void)
 {
 	if (_Rear < _Front)
 	{
@@ -162,7 +169,7 @@ int TRingBuffer::DirectEnqueueSize(void)
 // Parameters: (char *)데이타 포인터. (int)크기. 
 // Return: (int)넣은 크기.
 /////////////////////////////////////////////////////////////////////////
-int TRingBuffer::Enqueue(char* chpData, int iSize)
+int CRingBuffer::Enqueue(char* chpData, int iSize)
 {
 	int iRear;
 
@@ -219,7 +226,7 @@ int TRingBuffer::Enqueue(char* chpData, int iSize)
 // Parameters: (char *)데이타 포인터. (int)크기.
 // Return: (int)가져온 크기.
 /////////////////////////////////////////////////////////////////////////
-int TRingBuffer::Dequeue(char* chpDest, int iSize)
+int CRingBuffer::Dequeue(char* chpDest, int iSize)
 {
 	int iFront;
 
@@ -266,14 +273,15 @@ int TRingBuffer::Dequeue(char* chpDest, int iSize)
 // Parameters: (char *)데이타 포인터. (int)크기.
 // Return: (int)가져온 크기.
 /////////////////////////////////////////////////////////////////////////
-int	TRingBuffer::Peek(char* chpDest, int iSize)
+int	CRingBuffer::Peek(char* chpDest, int iSize)
 {
-	int iFront;
 	if (GetUseSize() < iSize)
 	{
 		//return 0;//요청한 크기가 현재 있는 사이즈보다 크다면 그냥 0을 리턴하고 종료한다.
 		iSize = GetUseSize();//꺼낼수 있는 크기만큼 꺼내주기
 	}
+
+	int iFront;
 
 	if (iSize <= 0)//논블로킹 소켓인경우 -1이 오는 경우가 있기 때문에 미리 대비
 	{
@@ -308,13 +316,13 @@ int	TRingBuffer::Peek(char* chpDest, int iSize)
 // Parameters: 없음.
 // Return: (int)이동크기
 /////////////////////////////////////////////////////////////////////////
-int TRingBuffer::MoveRear(int iSize)
+int CRingBuffer::MoveRear(int iSize)
 {
 	_Rear = (_Rear + iSize) % _BufferSize;
 	return iSize;//이동된 _Rear포인터 위치를 리턴한다.
 }
 
-int TRingBuffer::MoveFront(int iSize)
+int CRingBuffer::MoveFront(int iSize)
 {
 	_Front = (_Front + iSize) % _BufferSize;//이동한 크기만큼 넣고
 	return iSize;//이동한 _Front포인터 위치를 리턴한다.
@@ -327,7 +335,7 @@ int TRingBuffer::MoveFront(int iSize)
 // Return: 없음.
 /////////////////////////////////////////////////////////////////////////
 
-void TRingBuffer::ClearBuffer(void)
+void CRingBuffer::ClearBuffer(void)
 {
 	_Front = 0;
 	_Rear = 0;
@@ -340,7 +348,7 @@ void TRingBuffer::ClearBuffer(void)
 // Parameters: 없음.
 // Return: (char *) 버퍼 포인터.
 /////////////////////////////////////////////////////////////////////////
-char* TRingBuffer::GetFrontBufferPtr(void)
+char* CRingBuffer::GetFrontBufferPtr(void)
 {
 	return _Start + _Front;
 }
@@ -351,7 +359,7 @@ char* TRingBuffer::GetFrontBufferPtr(void)
 // Parameters: 없음.
 // Return: (char *) 버퍼 포인터.
 /////////////////////////////////////////////////////////////////////////
-char* TRingBuffer::GetRearBufferPtr(void)
+char* CRingBuffer::GetRearBufferPtr(void)
 {
 	return _Start + _Rear;
 }

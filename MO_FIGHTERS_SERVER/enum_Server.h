@@ -59,8 +59,8 @@ enum SERVER_GAME
 struct Session
 {
 	SOCKET _Sock;
-	TRingBuffer* _RecvBuf;
-	TRingBuffer* _SendBuf;
+	CRingBuffer* _RecvBuf;
+	CRingBuffer* _SendBuf;
 	int _Id;//ID값
 	bool _Direction_check;//true면 이동중 false면 정지
 	bool _Live;//세션 생존여부
