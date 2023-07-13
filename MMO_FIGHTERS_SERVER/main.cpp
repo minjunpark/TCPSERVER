@@ -44,6 +44,27 @@ void sendBroadCast(st_SESSION* session, char* _header, char* _Msg, int size);
 void sendUniCast(st_SESSION* session, CSerealBuffer* pPacket);//직렬화 버퍼버전 유니캐스트
 void sendBroadCast(st_SESSION* session, CSerealBuffer* pPacket);//직렬화 버퍼 버전 브로드캐스트
 
+//특정 1명의 클라이언트에게 보내기
+void sendPacket_UniCast(st_SESSION* session, CSerealBuffer* pPacket);
+//특정 섹터 1개에 있는 클라에게 보내기
+void sendPacket_SectorOne(st_SESSION* session, CSerealBuffer* pPacket, int iSectorX, int iSectorY);
+//특정유저 주변 섹터에만 보내기
+void sendPacket_Around(st_SESSION* session, CSerealBuffer* pPacket, bool bSendMe = false);//직렬화 버퍼 버전 브로드캐스트
+//모든 유저에게 패킷쏘기 이걸 쓸일은 사실상 없다고 보면됨
+void sendPacket_BroadCast(st_SESSION* session, CSerealBuffer* pPacket);
+
+bool Sector_Check(int _PX,int _PY);
+
+void PlayerSectorUpdatePacket(st_PLAYER* pPlayer);
+
+//특정세턱 좌표 기준 주변 영향권 섹터가져오기
+void GetSectorAround(int iSectorX, int iSectorY, st_SECTOR_AROUND* pSectorAround);
+
+void GetUpdateSectorAround(st_PLAYER* pPlayer, st_SECTOR_AROUND* pRemoveSector, st_SECTOR_AROUND* pAddSector);
+
+//캐릭터의 월드 좌표를토대로 섹터의 좌표를 가져오는 갱신하는 함수
+bool Sector_UpdatePlayer(st_PLAYER* pPlayer);
+
 bool PacketProc(st_SESSION* pSession, BYTE byPacketType, CSerealBuffer* pPacket);//패킷 전송 과정
 
 void Disconnect(st_SESSION* session);//연결끊기 Session _Live를 false로 바꿔죽인다.
@@ -62,12 +83,27 @@ st_PLAYER* Find_Player(DWORD Player_Id);
 unordered_map<SOCKET, st_SESSION*> Session_Map;//접속한 유저리스트
 unordered_map<DWORD, st_PLAYER*> g_Player_Map;//플레이어 리스트
 
-//vector<st_PLAYER*>g_Sector[dfSECTOR_MAX_Y][dfSECTOR_MAX_X];
-list<st_PLAYER*>g_Sector[100][100];//섹터 관리용 리스트
+list<st_PLAYER*>g_Sector[dfSECTOR_Y][dfSECTOR_X];//섹터 관리용 리스트
 list<DWORD>g_Delete_list;//삭제용 아이디목록
 
+
+st_SECTOR_AROUND SECTOR_ARRAY[dfSECTOR_Y][dfSECTOR_X];//주변섹터 검색용
+
+
 CMemoryPool<st_SESSION> _SessionPool(300, FALSE);//세션 오브젝트 풀
-CMemoryPool<st_PLAYER> _PlayerPool(300, FALSE);
+CMemoryPool<st_PLAYER> _PlayerPool(300, FALSE);//플레이어 오브젝트 풀
+
+//섹터를 처리할때
+//섹터처리 문제에서 반복문을 최대한 줄이려면
+//계산식을 줄여야한다.
+//내가 왼쪽으로 섹터가 이동하면
+//과거위치와 현재위치값으로 방향을 파악하고
+// swtich case로 판별한후 반복문을 줄이기위한 함수를 실행한다.
+// 함수의 개수는 총6개 insert와 delete를 구분해서 16개만든다
+// 그냥 유지보수를 편하게 하기위해서
+
+//우선 이방식으로 테스트해보고
+//추후에는 값자체가 저장되는 방식으로 가보자
 
 //모니터링 출력용 함수
 
@@ -91,23 +127,43 @@ int main()
 	init_Game();//게임 초기화
 	init_Sock();//서버통신 소켓 초기화
 
-	while (!g_bShutdown) {
+	while (!g_bShutdown)
+	{
 		NetWork();//네트워크
 		Update();//로직
-		ServerControl();//서버 키보드컨트롤
-		Monitor();//모니터링값 콘솔 출력
+		//ServerControl();//서버 키보드컨트롤
+		//Monitor();//모니터링값 콘솔 출력
 	}
 }
 
 void init_Game()
 {
-	
+	//0    1     2      3      4       5        6       7
+	//위 왼쪽위 왼쪽 왼쪽아래 아래 오른쪽아래 오른쪽 오른쪽위
+	int lineX[8] = { 0, -1, -1, -1, 0, 1, 1,  1 };
+	int lineY[8] = { -1, -1,  0,  1, 1, 1, 0, -1 };
+	//st_SECTOR_AROUND SECTOR_ARRAY[dfSECTOR_Y][dfSECTOR_X];
+
+	for (int iSECTOR_Y = 0; iSECTOR_Y < dfSECTOR_Y; iSECTOR_Y++)
+	{
+		for (int iSECTOR_X = 0; iSECTOR_X < dfSECTOR_X; iSECTOR_X++)
+		{
+			for (int iNodeSet = 0; iNodeSet < 9; iNodeSet++) //시계 방향으로 데이터 인풋
+			{
+				SECTOR_ARRAY[iSECTOR_Y][iSECTOR_X].Arroud[iNodeSet]._X = iSECTOR_X + lineX[iNodeSet];
+				SECTOR_ARRAY[iSECTOR_Y][iSECTOR_X].Arroud[iNodeSet]._Y = iSECTOR_Y + lineY[iNodeSet];
+			}
+			SECTOR_ARRAY[iSECTOR_Y][iSECTOR_X].Arroud[8]._X = iSECTOR_X;
+			SECTOR_ARRAY[iSECTOR_Y][iSECTOR_X].Arroud[8]._Y = iSECTOR_Y;
+		}
+	}
+
 	//한글세팅
 	setlocale(LC_ALL, "korean");
 	_wsetlocale(LC_ALL, L"korean");
 };
 
-void ServerControl() 
+void ServerControl()
 {
 
 };
@@ -119,16 +175,17 @@ void Monitor()
 
 void NetWork()
 {
-	FD_SET rset;
-	FD_SET wset;
 	SOCKET UserTable_SOCKET[FD_SETSIZE] = { INVALID_SOCKET, };
 	int iSocketCount = 0;
+
+	FD_SET rset;
+	FD_SET wset;
 
 	FD_ZERO(&rset);
 	FD_ZERO(&wset);
 	FD_SET(listen_sock, &rset);//리슨소켓을 rset소켓에 세팅한다
 	UserTable_SOCKET[iSocketCount] = listen_sock;
-	
+
 	iSocketCount++;
 
 	//모든 접속중인 클라이언트에 대해 SOCKET을 체크한다.
@@ -136,7 +193,10 @@ void NetWork()
 	for (auto session_it = Session_Map.begin(); session_it != Session_Map.end();)
 	{
 		pSession = session_it->second;
-		FD_SET(pSession->_Sock, &rset);//반응이 있는 ListenSocket을 모두 넣는다.
+
+		UserTable_SOCKET[iSocketCount] = pSession->_Sock;
+
+		FD_SET(pSession->_Sock, &rset);//반응이 있는recv Socket을 모두 넣는다.
 
 		if (pSession->_SendBuf.GetUseSize() > 0)//세션 버퍼에 보내야하는 데이터가 0이상이라면 FD세팅을 한다.
 		{
@@ -147,7 +207,7 @@ void NetWork()
 
 		if (FD_SETSIZE <= iSocketCount)
 		{
-			netSelectSocket(UserTable_SOCKET,&rset,&wset);
+			netSelectSocket(UserTable_SOCKET, &rset, &wset);
 			FD_ZERO(&rset);
 			FD_ZERO(&wset);
 			memset(UserTable_SOCKET, 0, sizeof(SOCKET) * FD_SETSIZE);
@@ -162,15 +222,14 @@ void NetWork()
 	if (iSocketCount > 0)
 	{
 		netSelectSocket(UserTable_SOCKET, &rset, &wset);
-		memset(UserTable_SOCKET, 0, sizeof(SOCKET) * FD_SETSIZE);
+		//memset(UserTable_SOCKET, 0, sizeof(SOCKET) * FD_SETSIZE);
 	}
-	
+
 	Disconnect_Clean();//연결이 끊긴 녀석들을 모두제거한다.
 };
 
 void netSelectSocket(SOCKET* pTableSocket, FD_SET* pReadSet, FD_SET* pWriteSet)
 {
-	int retSelect;
 	timeval times;
 	times.tv_sec = 0;
 	times.tv_usec = 0;
@@ -183,11 +242,13 @@ void netSelectSocket(SOCKET* pTableSocket, FD_SET* pReadSet, FD_SET* pWriteSet)
 	//타임아웃을 0으로 잡아야한다. 그렇지 않으면 뒤쪽 소켓들 검사 타이밍이 점점 늦어진다.
 	iResult = select(0, pReadSet, pWriteSet, 0, &times);
 
-	if (iResult < 0)
+	if (0 < iResult)
 	{
+		//table소켓을 돌면섯어던 소켓에 반응이 있었는지 확인  
 		for (int iCnt = 0; iResult > 0 && iCnt < FD_SETSIZE; ++iCnt)
 		{
 			bProcFlag = true;
+
 			if (pTableSocket[iCnt] == INVALID_SOCKET)
 				continue;
 
@@ -202,7 +263,7 @@ void netSelectSocket(SOCKET* pTableSocket, FD_SET* pReadSet, FD_SET* pWriteSet)
 				--iResult;
 				if (bProcFlag)
 				{
-					if (pTableSocket[iCnt] == listen_sock) 
+					if (pTableSocket[iCnt] == listen_sock)
 					{
 						AcceptProc();
 					}
@@ -218,7 +279,6 @@ void netSelectSocket(SOCKET* pTableSocket, FD_SET* pReadSet, FD_SET* pWriteSet)
 	{
 		wprintf(L"SOCKET_ERROR");
 	}
-
 };
 
 void Update()
@@ -244,12 +304,6 @@ void Update()
 		{
 			continue;
 		}
-		
-		if (dwCurtick - UtmpSession->_LastRecvTime > dfNETWORK_PACKET_RECV_TIMEOUT)//30초 이상 지난 세션은 제거한다.
-		{
-			Disconnect(UtmpSession);
-			continue;
-		}
 
 		if (pPlayer->_Direction_check != ON_MOVE || pPlayer->_Live != true)
 		{
@@ -258,6 +312,12 @@ void Update()
 		}
 
 		if (pPlayer->_HP <= 0)//Hp가 전부달아버린 세션이라면 세션을 죽이고 로직계산을 하지 않는다.
+		{
+			Disconnect(UtmpSession);
+			continue;
+		}
+
+		if (dwCurtick - UtmpSession->_LastRecvTime > dfNETWORK_PACKET_RECV_TIMEOUT)//30초 이상 지난 세션은 제거한다.
 		{
 			Disconnect(UtmpSession);
 			continue;
@@ -275,74 +335,79 @@ void Update()
 		//살아있으면서 움직이고 있는 세션이라면 원하는 방향으로 값을 이동시킨다.
 		switch (pPlayer->_Direction)
 		{
-			case dfPACKET_MOVE_DIR_LL:
-			{
-				pPlayer->_X -= defualt_MOVE_X;
-	#ifdef df_LOG
-				printf("gameRun:LL # SessionID:%d / X:%d / Y:%d\n", Login_All_tmpSession->_Id, Login_All_tmpSession->_X, Login_All_tmpSession->_Y);
-	#endif
-			}
-			break;
-			case dfPACKET_MOVE_DIR_LU:
-			{
-				pPlayer->_X -= defualt_MOVE_X;
-				pPlayer->_Y -= defualt_MOVE_Y;
-	#ifdef df_LOG
-				printf("gameRun:LU # SessionID:%d / X:%d / Y:%d\n", Login_All_tmpSession->_Id, Login_All_tmpSession->_X, Login_All_tmpSession->_Y);
-	#endif
-			}
-			break;
-			case dfPACKET_MOVE_DIR_UU:
-			{
-				pPlayer->_Y -= defualt_MOVE_Y;
-	#ifdef df_LOG
-				printf("gameRun:UU # SessionID:%d / X:%d / Y:%d\n", Login_All_tmpSession->_Id, Login_All_tmpSession->_X, Login_All_tmpSession->_Y);
-	#endif
-			}
-			break;
-			case dfPACKET_MOVE_DIR_RU:
-			{
-				pPlayer->_X += defualt_MOVE_X;
-				pPlayer->_Y -= defualt_MOVE_Y;
-	#ifdef df_LOG
-				printf("gameRun:RU # SessionID:%d / X:%d / Y:%d\n", Login_All_tmpSession->_Id, Login_All_tmpSession->_X, Login_All_tmpSession->_Y);
-	#endif
-			}
-			break;
-			case dfPACKET_MOVE_DIR_RR:
-			{
-				pPlayer->_X += defualt_MOVE_X;
-	#ifdef df_LOG
-				printf("gameRun:RR # SessionID:%d / X:%d / Y:%d\n", Login_All_tmpSession->_Id, Login_All_tmpSession->_X, Login_All_tmpSession->_Y);
-	#endif
-			}
-			break;
-			case dfPACKET_MOVE_DIR_RD:
-			{
-				pPlayer->_X += defualt_MOVE_X;
-				pPlayer->_Y += defualt_MOVE_Y;
-	#ifdef df_LOG
-				printf("gameRun:RD # SessionID:%d / X:%d / Y:%d\n", Login_All_tmpSession->_Id, Login_All_tmpSession->_X, Login_All_tmpSession->_Y);
-	#endif
-			}
-			break;
-			case dfPACKET_MOVE_DIR_DD:
-			{
-				pPlayer->_Y += defualt_MOVE_Y;
-	#ifdef df_LOG
-				printf("gameRun:DD # SessionID:%d / X:%d / Y:%d\n", Login_All_tmpSession->_Id, Login_All_tmpSession->_X, Login_All_tmpSession->_Y);
-	#endif
-			}
-			break;
-			case dfPACKET_MOVE_DIR_LD:
-			{
-				pPlayer->_X -= defualt_MOVE_X;
-				pPlayer->_Y += defualt_MOVE_Y;
-	#ifdef df_LOG
-				printf("gameRun:LD # SessionID:%d / X:%d / Y:%d\n", Login_All_tmpSession->_Id, Login_All_tmpSession->_X, Login_All_tmpSession->_Y);
-	#endif
-			}
-			break;
+		case dfPACKET_MOVE_DIR_LL:
+		{
+			pPlayer->_X -= defualt_MOVE_X;
+#ifdef df_LOG
+			printf("gameRun:LL # SessionID:%d / X:%d / Y:%d\n", UtmpSession->_Id, pPlayer->_X, pPlayer->_Y);
+#endif
+		}
+		break;
+		case dfPACKET_MOVE_DIR_LU:
+		{
+			pPlayer->_X -= defualt_MOVE_X;
+			pPlayer->_Y -= defualt_MOVE_Y;
+#ifdef df_LOG
+			printf("gameRun:LU # SessionID:%d / X:%d / Y:%d\n", UtmpSession->_Id, pPlayer->_X, pPlayer->_Y);
+#endif
+		}
+		break;
+		case dfPACKET_MOVE_DIR_UU:
+		{
+			pPlayer->_Y -= defualt_MOVE_Y;
+#ifdef df_LOG
+			printf("gameRun:UU # SessionID:%d / X:%d / Y:%d\n", UtmpSession->_Id, pPlayer->_X, pPlayer->_Y);
+#endif
+		}
+		break;
+		case dfPACKET_MOVE_DIR_RU:
+		{
+			pPlayer->_X += defualt_MOVE_X;
+			pPlayer->_Y -= defualt_MOVE_Y;
+#ifdef df_LOG
+			printf("gameRun:RU # SessionID:%d / X:%d / Y:%d\n", UtmpSession->_Id, pPlayer->_X, pPlayer->_Y);
+#endif
+		}
+		break;
+		case dfPACKET_MOVE_DIR_RR:
+		{
+			pPlayer->_X += defualt_MOVE_X;
+#ifdef df_LOG
+			printf("gameRun:RR # SessionID:%d / X:%d / Y:%d\n", UtmpSession->_Id, pPlayer->_X, pPlayer->_Y);
+#endif
+		}
+		break;
+		case dfPACKET_MOVE_DIR_RD:
+		{
+			pPlayer->_X += defualt_MOVE_X;
+			pPlayer->_Y += defualt_MOVE_Y;
+#ifdef df_LOG
+			printf("gameRun:RD # SessionID:%d / X:%d / Y:%d\n", UtmpSession->_Id, pPlayer->_X, pPlayer->_Y);
+#endif
+		}
+		break;
+		case dfPACKET_MOVE_DIR_DD:
+		{
+			pPlayer->_Y += defualt_MOVE_Y;
+#ifdef df_LOG
+			printf("gameRun:DD # SessionID:%d / X:%d / Y:%d\n", UtmpSession->_Id, pPlayer->_X, pPlayer->_Y);
+#endif
+		}
+		break;
+		case dfPACKET_MOVE_DIR_LD:
+		{
+			pPlayer->_X -= defualt_MOVE_X;
+			pPlayer->_Y += defualt_MOVE_Y;
+#ifdef df_LOG
+			printf("gameRun:LD # SessionID:%d / X:%d / Y:%d\n", UtmpSession->_Id, pPlayer->_X, pPlayer->_Y);
+#endif
+		}
+		break;
+		}
+		//이동의 경우 이동마다 섹터업데이트 를 체크해줘야한다.
+		if (Sector_UpdatePlayer(pPlayer))
+		{
+			PlayerSectorUpdatePacket(pPlayer);
 		}
 	}
 };
@@ -351,30 +416,30 @@ bool PacketProc(st_SESSION* pSession, BYTE byPacketType, CSerealBuffer* pPacket)
 {
 	switch (byPacketType)
 	{
-		case dfPACKET_SC_CREATE_MY_CHARACTER:
-			return netPacketProc_SC_CREATE_MY_CHARACTER(pSession, pPacket);
-			break;
-		case dfPACKET_SC_CREATE_OTHER_CHARACTER:
-			return netPacketProc_SC_CREATE_OTHER_CHARACTER(pSession, pPacket);
-			break;
-		case dfPACKET_SC_DELETE_CHARACTER:
-			return netPacketProc_DELETE_CHARACTER(pSession, pPacket);
-			break;
-		case dfPACKET_CS_MOVE_START:
-			return netPacketProc_MOVE_START(pSession, pPacket);
-			break;
-		case dfPACKET_CS_MOVE_STOP:
-			return netPacketProc_MOVE_STOP(pSession, pPacket);
-			break;
-		case dfPACKET_CS_ATTACK1:
-			return netPacketProc_ATTACK1(pSession, pPacket);
-			break;
-		case dfPACKET_CS_ATTACK2:
-			return netPacketProc_ATTACK2(pSession, pPacket);
-			break;
-		case dfPACKET_CS_ATTACK3:
-			return netPacketProc_ATTACK3(pSession, pPacket);
-			break;
+	case dfPACKET_SC_CREATE_MY_CHARACTER:
+		return netPacketProc_SC_CREATE_MY_CHARACTER(pSession, pPacket);
+		break;
+	case dfPACKET_SC_CREATE_OTHER_CHARACTER:
+		return netPacketProc_SC_CREATE_OTHER_CHARACTER(pSession, pPacket);
+		break;
+	case dfPACKET_SC_DELETE_CHARACTER:
+		return netPacketProc_DELETE_CHARACTER(pSession, pPacket);
+		break;
+	case dfPACKET_CS_MOVE_START:
+		return netPacketProc_MOVE_START(pSession, pPacket);
+		break;
+	case dfPACKET_CS_MOVE_STOP:
+		return netPacketProc_MOVE_STOP(pSession, pPacket);
+		break;
+	case dfPACKET_CS_ATTACK1:
+		return netPacketProc_ATTACK1(pSession, pPacket);
+		break;
+	case dfPACKET_CS_ATTACK2:
+		return netPacketProc_ATTACK2(pSession, pPacket);
+		break;
+	case dfPACKET_CS_ATTACK3:
+		return netPacketProc_ATTACK3(pSession, pPacket);
+		break;
 	}
 	return true;
 }
@@ -406,8 +471,11 @@ void AcceptProc()
 	//Session* NewSession = new Session;
 	st_SESSION* Create_User_Session = _SessionPool.Alloc();
 	st_PLAYER* Create_Player = _PlayerPool.Alloc();
+	
+	list<st_PLAYER*>* pAcceptSectorList;
+
 	Create_User_Session->_Con_Addr = clientaddr;
-	Create_User_Session->_SendBuf.ClearBuffer();
+	Create_User_Session->_SendBuf.ClearBuffer();//오브젝트와 플레이어 풀에서 가져오는거기 때문에 초기화가 필요하다.
 	Create_User_Session->_RecvBuf.ClearBuffer();
 	//Create_User_Session->_Direction = default_Direction;
 	//Create_User_Session->_Direction_check = ON_STOP;
@@ -422,8 +490,8 @@ void AcceptProc()
 	Create_Player->_Id = AccteptTotal;
 	Create_Player->_Direction = default_Direction;
 	Create_Player->_Direction_check = ON_STOP;
-	Create_Player->_X = defualt_X_SET;//X세팅
-	Create_Player->_Y = defualt_Y_SET;//Y세팅
+	Create_Player->_X = 150;//X세팅
+	Create_Player->_Y = 150;//Y세팅
 	Create_Player->_Live = true;//세션 생존플래그 0이면 사망
 	Create_Player->_HP = df_HP;
 	Create_Player->_cur_Pos._X = 0;
@@ -431,53 +499,79 @@ void AcceptProc()
 	Create_Player->_old_Pos._X = 0;
 	Create_Player->_old_Pos._Y = 0;
 
+	//생성된 유저 넣기
+	Session_Map.emplace(Create_User_Session->_Sock, Create_User_Session);
+	g_Player_Map.emplace(Create_Player->_Id, Create_Player);
+	
+	//섹터값 업데이트
+	Create_Player->_cur_Pos._X = Create_Player->_X / dfSECTOR_SIZE;
+	Create_Player->_cur_Pos._Y = Create_Player->_Y / dfSECTOR_SIZE;
+	Create_Player->_old_Pos._X = Create_Player->_cur_Pos._X;
+	Create_Player->_old_Pos._Y = Create_Player->_cur_Pos._Y;
+
+	pAcceptSectorList = &g_Sector[Create_Player->_cur_Pos._Y][Create_Player->_cur_Pos._X];
+	//생성된 유저를 특정 섹터에 넣는다.
+	pAcceptSectorList->push_back(Create_Player);
+
 	//2.생성된 유저 데이터 나에게 전송하기
 	bool retProc;
 	retProc = PacketProc(Create_User_Session, dfPACKET_SC_CREATE_MY_CHARACTER, nullptr);
 
 	if (!retProc)
 	{
+		Disconnect(Create_User_Session);
 		return;
 	}
-
-	//3.현재 리스트에 있는 유저들을 생성한 유저에게 모두 전송한다.
-	st_SESSION* All_List_Session_it;
-	for (auto _Session_it = Session_Map.begin(); _Session_it != Session_Map.end(); ++_Session_it)
+	
+	//3.현재 주변섹터에 있는 유저들을 나에게 전송해야됨 지금은 내위치만 하고있음
+	int AcceptlineX[9] = { 0, -1, -1, -1, 0, 1, 1,  1 ,0};
+	int AcceptlineY[9] = { -1, -1,  0,  1, 1, 1, 0, -1 ,0};
+	st_PLAYER* All_List_Player_it;
+	for (int iCnt = 0;iCnt < 9;iCnt++) 
 	{
-		All_List_Session_it = _Session_it->second;
-		st_PLAYER* pPlayer;
-		pPlayer = Find_Player(All_List_Session_it->_Id);
-		if (pPlayer == nullptr)
-		{
-			continue;
-		}
+		pAcceptSectorList = 
+			&g_Sector[Create_Player->_cur_Pos._Y + AcceptlineY[iCnt]][Create_Player->_cur_Pos._X + AcceptlineX[iCnt]];
 
-		if (All_List_Session_it->_Live == true)//살아있는 세션이라면?
+		for (auto _Player_it = pAcceptSectorList->begin(); _Player_it !=
+			pAcceptSectorList->end(); ++_Player_it)
 		{
-			st_dfPACKET_header st_other_header;
-			st_other_header.byCode = PACKET_CODE;
-			st_other_header.bySize = sizeof(st_dfPACKET_SC_CREATE_OTHER_CHARACTER);
-			st_other_header.byType = dfPACKET_SC_CREATE_OTHER_CHARACTER;
+			All_List_Player_it = *_Player_it;
 
-			CSerealBuffer pPacket;
-			pPacket.PutData((char*)&st_other_header,sizeof(st_dfPACKET_header));
-			pPacket << pPlayer->_Id << pPlayer->_Direction << pPlayer->_X << pPlayer->_Y << pPlayer->_HP;
-			sendUniCast(Create_User_Session, &pPacket);//나 자신을 제외하고 데이터전부인풋
+			if (All_List_Player_it->_Id == Create_Player->_Id)//나자신이라면 제외한다.
+			{
+				continue;
+			}
+
+			if (All_List_Player_it->_Live == true)//리스트안에 있으면서 살아있는 세션이라면
+			{
+				st_dfPACKET_header st_other_header;
+				st_other_header.byCode = PACKET_CODE;
+				st_other_header.bySize = sizeof(st_dfPACKET_SC_CREATE_OTHER_CHARACTER);
+				st_other_header.byType = dfPACKET_SC_CREATE_OTHER_CHARACTER;
+
+				CSerealBuffer pPacket;
+				pPacket.PutData((char*)&st_other_header, sizeof(st_dfPACKET_header));
+				pPacket << All_List_Player_it->_Id 
+						<< All_List_Player_it->_Direction 
+						<< All_List_Player_it->_X
+						<< All_List_Player_it->_Y
+						<< All_List_Player_it->_HP;
+				sendPacket_UniCast(Create_User_Session, &pPacket);//나 자신을 제외하고 데이터전부인풋
+			}
 		}
 	}
 
 	//4.생성된 세션 리스트에 넣기
-	Session_Map.emplace(Create_User_Session->_Sock, Create_User_Session);
+	//Session_Map.emplace(Create_User_Session->_Sock, Create_User_Session);
 	//Session_List.push_back(NewSession);
 
-	//5.생성된 나를 모든 유저에게 전달한다.
+	//5.생성된 나를 지금 주변섹터에 있는 유저에게 전달한다.
 	CSerealBuffer pPacket;
 	pPacket << Create_Player->_Id;
 	pPacket << Create_Player->_Direction;
 	pPacket << Create_Player->_X;
 	pPacket << Create_Player->_Y;
 	pPacket << Create_Player->_HP;
-
 	PacketProc(Create_User_Session, dfPACKET_SC_CREATE_OTHER_CHARACTER, &pPacket);
 };//접속유저가 새로 생겼을때
 
@@ -486,7 +580,7 @@ void AcceptProc()
 void RecvProc(SOCKET pSocket)//유저가 데이터를 보내왔을때
 {
 	st_SESSION* tmpSession;
-	tmpSession =	Find_Session(pSocket);
+	tmpSession = Find_Session(pSocket);
 
 	if (tmpSession == nullptr)
 	{
@@ -574,7 +668,7 @@ void RecvProc(SOCKET pSocket)//유저가 데이터를 보내왔을때
 			Disconnect(tmpSession);
 			return;
 		}
-		
+
 		int retCS;
 		retCS = cpPacket.MoveWritePos(retSwitchDeq);//데이터를 받은만큼 직렬화 버퍼를 이동시킨다.
 
@@ -586,11 +680,11 @@ void RecvProc(SOCKET pSocket)//유저가 데이터를 보내왔을때
 
 		bool retPacket;
 		retPacket = PacketProc(tmpSession, st_recv_header.byType, &cpPacket);//패킷절차가 실패했다면?
-		if (!retPacket)
-		{
-			Disconnect(tmpSession);//데이터가 꼬여서 실패한것이므로 연결을 끊어버린다.
-			return;
-		}
+		//if (!retPacket)
+		//{
+		//	Disconnect(tmpSession);//데이터가 꼬여서 실패한것이므로 연결을 끊어버린다.
+		//	return;
+		//}
 
 		cpPacket.Clear();//직렬화 버퍼 재사용을 위한 초기화
 	}
@@ -641,7 +735,7 @@ bool SendProc(SOCKET pSocket)
 	int retMF;
 	retMF = tmpSession->_SendBuf.MoveFront(retSend);//센드버퍼에 쌓은만큼 포인터를 이동시킨다.
 
-	if(retMF!= retSend)
+	if (retMF != retSend)
 	{
 		Disconnect(tmpSession);//연결종료처리
 		return false;//링버퍼가 꺠졌다는 뜻이므로 종료
@@ -683,7 +777,6 @@ void sendUniCast(st_SESSION* session, CSerealBuffer* pPacket)
 	{
 		return;//죽어있는패킷한테는안보낸다.
 	}
-
 	if (session->_SendBuf.GetFreeSize() >= pPacket->GetUseSize())//sendbuf에 직렬화버퍼크기만큼 넣는다.
 	{
 		int retUni;
@@ -696,7 +789,7 @@ void sendUniCast(st_SESSION* session, CSerealBuffer* pPacket)
 	}
 }
 
-void sendBroadCast(st_SESSION* session, CSerealBuffer *pPacket)
+void sendBroadCast(st_SESSION* session, CSerealBuffer* pPacket)
 {
 	int retBro;
 	st_SESSION* stmp = session;//보내지 않을 유저
@@ -762,15 +855,10 @@ void sendBroadCast(st_SESSION* session, char* _header, char* _Msg, int size)
 	}
 };//모든 유저에게 보내기
 
+
+
 void Disconnect(st_SESSION* session)//연결 끊기 함수
 {
-	//auto sItem = Session_Map.find(session->_Sock);
-	//
-	//if (sItem != Session_Map.end())//일치하는 녀석이 존재한다면
-	//{
-	//	(*sItem).second->_Live = false;//그녀석의 생존값을 false로 바꿔준다.
-	//}
-
 	auto pItem = g_Player_Map.find(session->_Id);
 	if (pItem != g_Player_Map.end())//일치하는 녀석이 존재한다면
 	{
@@ -782,46 +870,6 @@ void Disconnect(st_SESSION* session)//연결 끊기 함수
 
 void Disconnect_Clean()//안정성을 위해 디스커넥트된 개체를 네트워크 마지막시점에 정리한다.
 {
-	//st_SESSION* _Session_Object;
-	//for (auto _Session_it = Session_Map.begin(); _Session_it != Session_Map.end();)
-	//{
-	//	_Session_Object = _Session_it->second;
-	//	if (_Session_Object->_Live == false) //세션 특정객체가 죽어있다면
-	//	{
-	//		PacketProc(_Session_Object, dfPACKET_SC_DELETE_CHARACTER, nullptr);
-	//		closesocket(_Session_Object->_Sock);
-	//		//delete _Session_Object->_RecvBuf;//세션 받기버퍼 제거
-	//		//delete _Session_Object->_SendBuf;//세션 보내기 버퍼 제거
-	//		//delete _Session_Object;//동적할당된 세션 제거
-	//		_Session_Object->_SendBuf.ClearBuffer();
-	//		_Session_Object->_RecvBuf.ClearBuffer();
-
-	//		_SessionPool.Free(_Session_Object);//오브젝트풀에 세션리스트 반납
-	//		_Session_it = Session_Map.erase(_Session_it);//그 개체를 리스트에서 제거한후 받은 이터레이터를 리턴받는다.;
-	//	}
-	//	else
-	//	{
-	//		++_Session_it;//살아있는 객체라면 다음 리스트로 넘어간다.
-	//	}
-	//}
-
-	//st_PLAYER* _Player_Object;
-	//for (auto _Player_it = g_Player_Map.begin(); _Player_it != g_Player_Map.end();)
-	//{
-	//	_Player_Object = _Player_it->second;
-	//	if (_Player_Object->_Live == false) //플레이어 특정객체가 죽어있다면
-	//	{
-	//		//PacketProc(_Session_Object, dfPACKET_SC_DELETE_CHARACTER, nullptr);
-
-	//		_PlayerPool.Free(_Player_Object);//오브젝트풀에 플레이어리스트 반납
-	//		_Player_it = g_Player_Map.erase(_Player_it);//그 개체를 리스트에서 제거한후 받은 이터레이터를 리턴받는다.;
-	//	}
-	//	else
-	//	{
-	//		++_Player_it;//살아있는 객체라면 다음 리스트로 넘어간다.
-	//	}
-	//}
-	
 	DWORD _retDel;
 	st_PLAYER* _Player_Object;
 	st_SESSION* _Session_Object;
@@ -834,7 +882,18 @@ void Disconnect_Clean()//안정성을 위해 디스커넥트된 개체를 네트
 			wprintf(L"LOG : Disconnect_Clean %d 유저 없는데 검색중\n", _retDel);
 			continue;
 		}
+
 		_Session_Object = _Player_Object->pSession;//받은 세션 리스트 가져오기
+
+		for (auto _Sector_it = g_Sector[_Player_Object->_cur_Pos._Y][_Player_Object->_cur_Pos._X].begin();
+			_Sector_it != g_Sector[_Player_Object->_cur_Pos._Y][_Player_Object->_cur_Pos._X].end(); ++_Sector_it)
+		{
+			if (_Player_Object->_Id == (*_Sector_it)->_Id)
+			{
+				g_Sector[_Player_Object->_cur_Pos._Y][_Player_Object->_cur_Pos._X].erase(_Sector_it);
+				break;//나자신을 섹터에서 제거한다.
+			}
+		}
 
 		PacketProc(_Session_Object, dfPACKET_SC_DELETE_CHARACTER, nullptr);//제거되는 세션아이디 전달
 		closesocket(_Session_Object->_Sock);//소켓클로즈
@@ -842,45 +901,11 @@ void Disconnect_Clean()//안정성을 위해 디스커넥트된 개체를 네트
 		_Session_Object->_RecvBuf.ClearBuffer();//링버퍼 초기화
 		Session_Map.erase(_Session_Object->_Sock);//맵에서 해당세션제거
 		_SessionPool.Free(_Session_Object);//오브젝트풀에 세션리스트 반납
-		
+
 		g_Player_Map.erase(_Player_Object->_Id);//플레이어 맵에서 해당 플레이어 제거
 		_PlayerPool.Free(_Player_Object);//오브젝트풀에 플레이어리스트 반납
 	}
-
 	g_Delete_list.clear();//모든유저가 삭제됬으므로 제거한다.
-
-	//DWORD Session_id;
-	//for (auto _Session_it = g_Delete_ID.begin(); _Session_it != g_Delete_ID.end();)
-	//{
-	//	Session_id = *_Session_it;
-
-	//	auto item = Session_Map.find(Session_id);
-	//	if (item != Session_Map.end())//일치하는 녀석이 존재한다면
-	//	{
-	//		PacketProc(_Session_Object, dfPACKET_SC_DELETE_CHARACTER, nullptr);
-	//		closesocket(_Session_Object->_Sock);
-	//		_SessionPool.Free(_Session_Object);//오브젝트풀에 세션리스트 반납
-	//		_Session_it = g_Delete_ID.erase(_Session_it);
-	//		//_Session_it = Session_Map.erase(_Session_it);//그 개체를 리스트에서 제거한후 받은 이터레이터를 리턴받는다.;
-	//	}
-
-	//	if (_Session_Object->_Live == false) //세션 특정객체가 죽어있다면
-	//	{
-	//		PacketProc(_Session_Object, dfPACKET_SC_DELETE_CHARACTER, nullptr);
-	//		closesocket(_Session_Object->_Sock);
-	//		//delete _Session_Object->_RecvBuf;//세션 받기버퍼 제거
-	//		//delete _Session_Object->_SendBuf;//세션 보내기 버퍼 제거
-	//		//delete _Session_Object;//동적할당된 세션 제거
-
-	//		_SessionPool.Free(_Session_Object);//오브젝트풀에 세션리스트 반납
-	//		_Session_it = Session_Map.erase(_Session_it);//그 개체를 리스트에서 제거한후 받은 이터레이터를 리턴받는다.;
-	//	}
-	//	else
-	//	{
-	//		++_Session_it;//살아있는 객체라면 다음 리스트로 넘어간다.
-	//	}
-	//}
-
 }
 
 void init_Sock()
@@ -973,7 +998,7 @@ void log_msg(int _wsaError, int _line, const char* _file)
 		|| _wsaError == WSANOTINITIALISED//성공한 WSAStartup이 아직 수행되지 않았습니다.
 		|| _wsaError == WSAEWOULDBLOCK//이 오류는 즉시 완료할 수 없는 비블로킹 소켓의 작업에서 반환됩니다
 		|| _wsaError == WSAEFAULT)//주소가 잘못되었습니다. 애플리케이션이 잘못된 포인터 값을 전달하거나 버퍼의 길이가 너무 작은 경우에 발생
-		
+
 	{
 		return;
 	}
@@ -1155,6 +1180,7 @@ st_SESSION* Find_Session(SOCKET sock)
 st_PLAYER* Find_Player(DWORD Player_Id)
 {
 	auto S_Iter = g_Player_Map.find(Player_Id);
+
 	if (S_Iter != g_Player_Map.end())//찾음
 	{
 		return S_Iter->second;
@@ -1164,3 +1190,609 @@ st_PLAYER* Find_Player(DWORD Player_Id)
 		return nullptr;
 	}
 };
+
+//특정 1명의 클라이언트에게 보내기
+void sendPacket_UniCast(st_SESSION* session, CSerealBuffer* pPacket)
+{
+	if (session->_Live == false)
+	{
+		return;//죽어있는패킷한테는안보낸다.
+	}
+	if (session->_SendBuf.GetFreeSize() >= pPacket->GetUseSize())//sendbuf에 직렬화버퍼크기만큼 넣는다.
+	{
+		int retUni;
+		retUni = session->_SendBuf.Enqueue(pPacket->GetBufferPtr(), pPacket->GetUseSize());//안들어가면 안들어가는데로 별상관없음 버퍼가 꽉찬거니까
+		if (retUni != pPacket->GetUseSize())
+		{
+			Disconnect(session);
+			return;
+		}
+	}
+};
+
+//특정 섹터 1개에 있는 모든 클라에게 보내기
+void sendPacket_SectorOne(st_SESSION* session, CSerealBuffer* pPacket, int iSectorX, int iSectorY)
+{
+	//list<st_PLAYER*>g_Sector[dfSECTOR_Y][dfSECTOR_X];//섹터 관리용 리스트
+	
+	st_SESSION* stmp = session;//보내지 않을 유저
+
+	//받은 섹터 안을 돌면서 그안에 있는 유저 센드버퍼에 Enqueue한다.
+	st_PLAYER* Sector_Player;
+
+	if (!Sector_Check(iSectorX, iSectorY))//섹터 범위를 벗어난게 있다면 전송안함
+	{
+		return;
+	}
+
+	for (auto Player_it = g_Sector[iSectorY][iSectorX].begin();
+		Player_it != g_Sector[iSectorY][iSectorX].end(); ++Player_it)
+	{
+		Sector_Player = *Player_it;
+		if (stmp != nullptr && stmp->_Id == Sector_Player->_Id)//값이 같다면 이녀석은 보내지 않을녀석이니 캔슬한다.
+		{
+			continue;
+		}
+			
+		if (Sector_Player->_Live == false)
+		{
+			continue;//죽어있는패킷한테는안보낸다.
+		}
+		//각세션의 센드버퍼에 enqueue시킨다.
+		if (Sector_Player->pSession->_SendBuf.GetFreeSize() >= pPacket->GetUseSize())//sendbuf에 넣을수있는 크기가 남아있다면
+		{
+			int retBro;
+			retBro = Sector_Player->pSession->_SendBuf.Enqueue(pPacket->GetBufferPtr(), pPacket->GetUseSize());//안들어가면 안들어가는데로 별상관없음 버퍼가 꽉찬거니까
+			if (retBro != pPacket->GetUseSize())//센드버퍼 자체가 고장났거나 송신버퍼가 가득찬경우 이므로 디스커넥트하고 끝내버린다.
+			{
+				Disconnect(Sector_Player->pSession);
+			}
+		}
+	}
+};
+
+//특정유저 주변 섹터에만 보내기
+void sendPacket_Around(st_SESSION* pSession, CSerealBuffer* pPacket, bool bSendMe)
+{
+	//bSendMe true라면 나에게 보내지않는다.
+	//false라면 나도 포함해서 보낸다.
+	
+	int retBro;
+	st_PLAYER* Sector_Player;
+	Sector_Player = Find_Player(pSession->_Id);
+	if (Sector_Player == nullptr)
+	{
+		return;
+	}
+	int Send_X;
+	int Send_Y;
+	for (int sector_count = 0; sector_count < 9; sector_count++)
+	{
+		//자기주변 9개 섹터 값 계산해서 데이터 보내기
+		//0부터 위 왼쪽위 왼쪽 왼쪽아래 아래 오른쪽아래 오른쪽 오른쪽위 나 자신 순서다.
+		Send_X = SECTOR_ARRAY[Sector_Player->_cur_Pos._Y]
+			[Sector_Player->_cur_Pos._X].Arroud[sector_count]._X;
+		Send_Y = SECTOR_ARRAY[Sector_Player->_cur_Pos._Y]
+			[Sector_Player->_cur_Pos._X].Arroud[sector_count]._Y;
+
+		if (!Sector_Check(Send_X, Send_Y))//섹터 범위를 벗어난게 있다면 전송안함
+		{
+			continue;
+		}
+		if (bSendMe)//나자신을 제외해서 데이터를 보낼것인지
+		{
+			sendPacket_SectorOne(pSession, pPacket, Send_X, Send_Y);
+		}
+		else
+		{
+			sendPacket_SectorOne(nullptr, pPacket, Send_X, Send_Y);
+		}
+	}
+};
+
+//모든 유저에게 패킷쏘기 이걸 쓸일은 사실상 없다고 보면됨
+void sendPacket_BroadCast(st_SESSION* session, CSerealBuffer* pPacket)
+{
+
+};
+
+void GetSectorAround(int iSectorX, int iSectorY, st_SECTOR_AROUND* pSectorAround)
+{
+	pSectorAround = &SECTOR_ARRAY[iSectorY][iSectorX];
+};
+
+void GetUpdateSectorAround(st_PLAYER* pPlayer, st_SECTOR_AROUND* pRemoveSector, st_SECTOR_AROUND* pAddSector)
+{
+	//if ((pPlayer->_cur_Pos._X == pPlayer->_old_Pos._X) &&
+	//	(pPlayer->_cur_Pos._Y == pPlayer->_old_Pos._Y))
+	//{
+	//	//최초 접속시의 좌표이기 때문에 무시한다.
+	//	pRemoveSector = nullptr;
+	//	pAddSector = nullptr;
+	//	return;
+	//}
+
+	//0    1     2      3      4       5        6       7
+	//위 왼쪽위 왼쪽 왼쪽아래 아래 오른쪽아래 오른쪽 오른쪽위
+	int lineX[8] = { 0, -1, -1, -1, 0, 1, 1,  1 };
+	int lineY[8] = { -1, -1,  0,  1, 1, 1, 0, -1 };
+
+	int _Directer = 9;
+	for (int iDIR = 0; iDIR < 8; iDIR++)
+	{
+		//계산하는값중에 일치하는 방향값을 뽑아낸다.
+		//예: 만약 IDIR이 0이라면
+		//old_x= cur_x+0
+		//old_Y= cur_y+(-1) 이될것이고 만약이 값이 같다는것은
+		//섹터이동이 발행했고 방향이 위쪽이었다는것이다.
+		//그방향값을 넣고 스위치 케이스로 해당하는 방향의
+		if ((pPlayer->_cur_Pos._X == (pPlayer->_old_Pos._X + lineX[iDIR])) &&
+			(pPlayer->_cur_Pos._Y == (pPlayer->_old_Pos._Y + lineY[iDIR])))
+		{
+			_Directer = iDIR;//일치하는 방향값 확인
+			break;
+		}
+	}
+
+	switch (_Directer)
+	{
+	case dfUP://위쪽
+		//왼쪽위
+		pAddSector->Arroud[0]._X = pPlayer->_cur_Pos._X + lineX[dfLEFTUP];
+		pAddSector->Arroud[0]._Y = pPlayer->_cur_Pos._Y + lineY[dfLEFTUP];
+		//위
+		pAddSector->Arroud[1]._X = pPlayer->_cur_Pos._X + lineX[dfUP];
+		pAddSector->Arroud[1]._Y = pPlayer->_cur_Pos._Y + lineY[dfUP];
+		//오른쪽위
+		pAddSector->Arroud[2]._X = pPlayer->_cur_Pos._X + lineX[dfRIGHTUP];
+		pAddSector->Arroud[2]._Y = pPlayer->_cur_Pos._Y + lineY[dfRIGHTUP];
+
+		//Old 왼쪽아래
+		pRemoveSector->Arroud[0]._X = pPlayer->_old_Pos._X + lineX[dfLEFTDOWN];
+		pRemoveSector->Arroud[0]._Y = pPlayer->_old_Pos._Y + lineY[dfLEFTDOWN];
+		//Old 아래
+		pRemoveSector->Arroud[1]._X = pPlayer->_old_Pos._X + lineX[dfDOWN];
+		pRemoveSector->Arroud[1]._Y = pPlayer->_old_Pos._Y + lineY[dfDOWN];
+		//Old 오른쪽아래
+		pRemoveSector->Arroud[2]._X = pPlayer->_old_Pos._X + lineX[dfRIGHTDOWN];
+		pRemoveSector->Arroud[2]._Y = pPlayer->_old_Pos._Y + lineY[dfRIGHTDOWN];
+
+		pAddSector->iCount = 3;
+		pRemoveSector->iCount = 3;
+		break;
+	case dfLEFTUP://왼쪽위
+		//왼쪽아래
+		pAddSector->Arroud[0]._X = pPlayer->_cur_Pos._X + lineX[dfLEFTDOWN];
+		pAddSector->Arroud[0]._Y = pPlayer->_cur_Pos._Y + lineY[dfLEFTDOWN];
+		//왼쪽
+		pAddSector->Arroud[1]._X = pPlayer->_cur_Pos._X + lineX[dfLEFT];
+		pAddSector->Arroud[1]._Y = pPlayer->_cur_Pos._Y + lineY[dfLEFT];
+		//왼쪽위
+		pAddSector->Arroud[2]._X = pPlayer->_cur_Pos._X + lineX[dfLEFTUP];
+		pAddSector->Arroud[2]._Y = pPlayer->_cur_Pos._Y + lineY[dfLEFTUP];
+		//위
+		pAddSector->Arroud[3]._X = pPlayer->_cur_Pos._X + lineX[dfUP];
+		pAddSector->Arroud[3]._Y = pPlayer->_cur_Pos._Y + lineY[dfUP];
+		//오른쪽위
+		pAddSector->Arroud[4]._X = pPlayer->_cur_Pos._X + lineX[dfRIGHTUP];
+		pAddSector->Arroud[4]._Y = pPlayer->_cur_Pos._Y + lineY[dfRIGHTUP];
+
+		//Old 오른쪽위
+		pRemoveSector->Arroud[0]._X = pPlayer->_old_Pos._X + lineX[dfRIGHTUP];
+		pRemoveSector->Arroud[0]._Y = pPlayer->_old_Pos._Y + lineY[dfRIGHTUP];
+		//Old 오른쪽
+		pRemoveSector->Arroud[1]._X = pPlayer->_old_Pos._X + lineX[dfRIGHT];
+		pRemoveSector->Arroud[1]._Y = pPlayer->_old_Pos._Y + lineY[dfRIGHT];
+		//Old 오른쪽아래
+		pRemoveSector->Arroud[2]._X = pPlayer->_old_Pos._X + lineX[dfRIGHTDOWN];
+		pRemoveSector->Arroud[2]._Y = pPlayer->_old_Pos._Y + lineY[dfRIGHTDOWN];
+
+		//Old 아래
+		pRemoveSector->Arroud[3]._X = pPlayer->_old_Pos._X + lineX[dfDOWN];
+		pRemoveSector->Arroud[3]._Y = pPlayer->_old_Pos._Y + lineY[dfDOWN];
+		//Old 왼쪽아래
+		pRemoveSector->Arroud[4]._X = pPlayer->_old_Pos._X + lineX[dfLEFTDOWN];
+		pRemoveSector->Arroud[4]._Y = pPlayer->_old_Pos._Y + lineY[dfLEFTDOWN];
+
+		pAddSector->iCount = 5;
+		pRemoveSector->iCount = 5;
+
+		break;
+	case dfLEFT://왼쪽
+		//왼쪽위
+		pAddSector->Arroud[0]._X = pPlayer->_cur_Pos._X + lineX[dfLEFTUP];
+		pAddSector->Arroud[0]._Y = pPlayer->_cur_Pos._Y + lineY[dfLEFTUP];
+		//왼쪽
+		pAddSector->Arroud[1]._X = pPlayer->_cur_Pos._X + lineX[dfLEFT];
+		pAddSector->Arroud[1]._Y = pPlayer->_cur_Pos._Y + lineY[dfLEFT];
+		//왼쪽아래
+		pAddSector->Arroud[2]._X = pPlayer->_cur_Pos._X + lineX[dfLEFTDOWN];
+		pAddSector->Arroud[2]._Y = pPlayer->_cur_Pos._Y + lineY[dfLEFTDOWN];
+
+		//Old 오른쪽위
+		pRemoveSector->Arroud[0]._X = pPlayer->_old_Pos._X + lineX[dfRIGHTUP];
+		pRemoveSector->Arroud[0]._Y = pPlayer->_old_Pos._Y + lineY[dfRIGHTUP];
+		//Old 오른쪽
+		pRemoveSector->Arroud[1]._X = pPlayer->_old_Pos._X + lineX[dfRIGHT];
+		pRemoveSector->Arroud[1]._Y = pPlayer->_old_Pos._Y + lineY[dfRIGHT];
+		//Old 오른쪽아래
+		pRemoveSector->Arroud[2]._X = pPlayer->_old_Pos._X + lineX[dfRIGHTDOWN];
+		pRemoveSector->Arroud[2]._Y = pPlayer->_old_Pos._Y + lineY[dfRIGHTDOWN];
+
+		pAddSector->iCount = 3;
+		pRemoveSector->iCount = 3;
+		break;
+	case dfLEFTDOWN://왼쪽아래
+
+		//왼쪽위
+		pAddSector->Arroud[0]._X = pPlayer->_cur_Pos._X + lineX[dfLEFTUP];
+		pAddSector->Arroud[0]._Y = pPlayer->_cur_Pos._Y + lineY[dfLEFTUP];
+		//왼쪽
+		pAddSector->Arroud[1]._X = pPlayer->_cur_Pos._X + lineX[dfLEFT];
+		pAddSector->Arroud[1]._Y = pPlayer->_cur_Pos._Y + lineY[dfLEFT];
+		//왼쪽아래
+		pAddSector->Arroud[2]._X = pPlayer->_cur_Pos._X + lineX[dfLEFTDOWN];
+		pAddSector->Arroud[2]._Y = pPlayer->_cur_Pos._Y + lineY[dfLEFTDOWN];
+		//아래
+		pAddSector->Arroud[3]._X = pPlayer->_cur_Pos._X + lineX[dfDOWN];
+		pAddSector->Arroud[3]._Y = pPlayer->_cur_Pos._Y + lineY[dfDOWN];
+		//오른쪽아래
+		pAddSector->Arroud[4]._X = pPlayer->_cur_Pos._X + lineX[dfRIGHTDOWN];
+		pAddSector->Arroud[4]._Y = pPlayer->_cur_Pos._Y + lineY[dfRIGHTDOWN];
+		
+		//Old 왼쪽위
+		pRemoveSector->Arroud[0]._X = pPlayer->_old_Pos._X + lineX[dfLEFTUP];
+		pRemoveSector->Arroud[0]._Y = pPlayer->_old_Pos._Y + lineY[dfLEFTUP];
+		//Old 위
+		pRemoveSector->Arroud[1]._X = pPlayer->_old_Pos._X + lineX[dfUP];
+		pRemoveSector->Arroud[1]._Y = pPlayer->_old_Pos._Y + lineY[dfUP];
+		//Old 오른쪽위
+		pRemoveSector->Arroud[2]._X = pPlayer->_old_Pos._X + lineX[dfRIGHTUP];
+		pRemoveSector->Arroud[2]._Y = pPlayer->_old_Pos._Y + lineY[dfRIGHTUP];
+
+		//Old 오른쪽
+		pRemoveSector->Arroud[3]._X = pPlayer->_old_Pos._X + lineX[dfRIGHT];
+		pRemoveSector->Arroud[3]._Y = pPlayer->_old_Pos._Y + lineY[dfRIGHT];
+		//Old 오른쪽아래
+		pRemoveSector->Arroud[4]._X = pPlayer->_old_Pos._X + lineX[dfRIGHTDOWN];
+		pRemoveSector->Arroud[4]._Y = pPlayer->_old_Pos._Y + lineY[dfRIGHTDOWN];
+
+		pAddSector->iCount = 5;
+		pRemoveSector->iCount = 5;
+
+		break;
+	case dfDOWN://아래
+		//왼쪽아래
+		pAddSector->Arroud[0]._X = pPlayer->_cur_Pos._X + lineX[dfLEFTDOWN];
+		pAddSector->Arroud[0]._Y = pPlayer->_cur_Pos._Y + lineY[dfLEFTDOWN];
+		//아래
+		pAddSector->Arroud[1]._X = pPlayer->_cur_Pos._X + lineX[dfDOWN];
+		pAddSector->Arroud[1]._Y = pPlayer->_cur_Pos._Y + lineY[dfDOWN];
+		//오른쪽아래
+		pAddSector->Arroud[2]._X = pPlayer->_cur_Pos._X + lineX[dfRIGHTDOWN];
+		pAddSector->Arroud[2]._Y = pPlayer->_cur_Pos._Y + lineY[dfRIGHTDOWN];
+
+		//Old 왼쪽위
+		pRemoveSector->Arroud[0]._X = pPlayer->_old_Pos._X + lineX[dfLEFTUP];
+		pRemoveSector->Arroud[0]._Y = pPlayer->_old_Pos._Y + lineY[dfLEFTUP];
+		//Old 위
+		pRemoveSector->Arroud[1]._X = pPlayer->_old_Pos._X + lineX[dfUP];
+		pRemoveSector->Arroud[1]._Y = pPlayer->_old_Pos._Y + lineY[dfUP];
+		//Old 오른쪽위
+		pRemoveSector->Arroud[2]._X = pPlayer->_old_Pos._X + lineX[dfRIGHTUP];
+		pRemoveSector->Arroud[2]._Y = pPlayer->_old_Pos._Y + lineY[dfRIGHTUP];
+
+		pAddSector->iCount = 3;
+		pRemoveSector->iCount = 3;
+		break;
+	case dfRIGHTDOWN://오른쪽아래
+		//왼쪽아래
+		pAddSector->Arroud[0]._X = pPlayer->_cur_Pos._X + lineX[dfLEFTDOWN];
+		pAddSector->Arroud[0]._Y = pPlayer->_cur_Pos._Y + lineY[dfLEFTDOWN];
+		//아래
+		pAddSector->Arroud[1]._X = pPlayer->_cur_Pos._X + lineX[dfDOWN];
+		pAddSector->Arroud[1]._Y = pPlayer->_cur_Pos._Y + lineY[dfDOWN];
+		//오른쪽아래
+		pAddSector->Arroud[2]._X = pPlayer->_cur_Pos._X + lineX[dfRIGHTDOWN];
+		pAddSector->Arroud[2]._Y = pPlayer->_cur_Pos._Y + lineY[dfRIGHTDOWN];
+		//오른쪽
+		pAddSector->Arroud[3]._X = pPlayer->_cur_Pos._X + lineX[dfRIGHT];
+		pAddSector->Arroud[3]._Y = pPlayer->_cur_Pos._Y + lineY[dfRIGHT];
+		//오른쪽위
+		pAddSector->Arroud[4]._X = pPlayer->_cur_Pos._X + lineX[dfRIGHTUP];
+		pAddSector->Arroud[4]._Y = pPlayer->_cur_Pos._Y + lineY[dfRIGHTUP];
+
+		//Old 왼쪽아래
+		pRemoveSector->Arroud[0]._X = pPlayer->_old_Pos._X + lineX[dfLEFTDOWN];
+		pRemoveSector->Arroud[0]._Y = pPlayer->_old_Pos._Y + lineY[dfLEFTDOWN];
+		//Old 왼쪽
+		pRemoveSector->Arroud[1]._X = pPlayer->_old_Pos._X + lineX[dfLEFT];
+		pRemoveSector->Arroud[1]._Y = pPlayer->_old_Pos._Y + lineY[dfLEFT];
+		//Old 왼쪽위
+		pRemoveSector->Arroud[2]._X = pPlayer->_old_Pos._X + lineX[dfLEFTUP];
+		pRemoveSector->Arroud[2]._Y = pPlayer->_old_Pos._Y + lineY[dfLEFTUP];
+		//Old 위
+		pRemoveSector->Arroud[3]._X = pPlayer->_old_Pos._X + lineX[dfUP];
+		pRemoveSector->Arroud[3]._Y = pPlayer->_old_Pos._Y + lineY[dfUP];
+		//Old 오른쪽위
+		pRemoveSector->Arroud[4]._X = pPlayer->_old_Pos._X + lineX[dfRIGHTUP];
+		pRemoveSector->Arroud[4]._Y = pPlayer->_old_Pos._Y + lineY[dfRIGHTUP];
+
+		pAddSector->iCount = 5;
+		pRemoveSector->iCount = 5;
+
+
+		break;
+	case dfRIGHT://오른쪽
+		//오른쪽아래
+		pAddSector->Arroud[0]._X = pPlayer->_cur_Pos._X + lineX[dfRIGHTDOWN];
+		pAddSector->Arroud[0]._Y = pPlayer->_cur_Pos._Y + lineY[dfRIGHTDOWN];
+		//오른쪽
+		pAddSector->Arroud[1]._X = pPlayer->_cur_Pos._X + lineX[dfRIGHT];
+		pAddSector->Arroud[1]._Y = pPlayer->_cur_Pos._Y + lineY[dfRIGHT];
+		//오른쪽위
+		pAddSector->Arroud[2]._X = pPlayer->_cur_Pos._X + lineX[dfRIGHTUP];
+		pAddSector->Arroud[2]._Y = pPlayer->_cur_Pos._Y + lineY[dfRIGHTUP];
+
+		//Old 왼쪽위
+		pRemoveSector->Arroud[0]._X = pPlayer->_old_Pos._X + lineX[dfLEFTUP];
+		pRemoveSector->Arroud[0]._Y = pPlayer->_old_Pos._Y + lineY[dfLEFTUP];
+		//Old 왼쪽
+		pRemoveSector->Arroud[1]._X = pPlayer->_old_Pos._X + lineX[dfLEFT];
+		pRemoveSector->Arroud[1]._Y = pPlayer->_old_Pos._Y + lineY[dfLEFT];
+		//Old 왼쪽아래
+		pRemoveSector->Arroud[2]._X = pPlayer->_old_Pos._X + lineX[dfLEFTDOWN];
+		pRemoveSector->Arroud[2]._Y = pPlayer->_old_Pos._Y + lineY[dfLEFTDOWN];
+
+		pAddSector->iCount = 3;
+		pRemoveSector->iCount = 3;
+		break;
+	case dfRIGHTUP://오른쪽위
+		//왼쪽위
+		pAddSector->Arroud[0]._X = pPlayer->_cur_Pos._X + lineX[dfLEFTUP];
+		pAddSector->Arroud[0]._Y = pPlayer->_cur_Pos._Y + lineY[dfLEFTUP];
+		//위
+		pAddSector->Arroud[1]._X = pPlayer->_cur_Pos._X + lineX[dfUP];
+		pAddSector->Arroud[1]._Y = pPlayer->_cur_Pos._Y + lineY[dfUP];
+		//오른쪽위
+		pAddSector->Arroud[2]._X = pPlayer->_cur_Pos._X + lineX[dfRIGHTUP];
+		pAddSector->Arroud[2]._Y = pPlayer->_cur_Pos._Y + lineY[dfRIGHTUP];
+		//오른쪽
+		pAddSector->Arroud[3]._X = pPlayer->_cur_Pos._X + lineX[dfRIGHT];
+		pAddSector->Arroud[3]._Y = pPlayer->_cur_Pos._Y + lineY[dfRIGHT];
+		//오른쪽아래
+		pAddSector->Arroud[4]._X = pPlayer->_cur_Pos._X + lineX[dfRIGHTDOWN];
+		pAddSector->Arroud[4]._Y = pPlayer->_cur_Pos._Y + lineY[dfRIGHTDOWN];
+
+		//Old 왼쪽위
+		pRemoveSector->Arroud[0]._X = pPlayer->_old_Pos._X + lineX[dfLEFTUP];
+		pRemoveSector->Arroud[0]._Y = pPlayer->_old_Pos._Y + lineY[dfLEFTUP];
+		//Old 왼쪽
+		pRemoveSector->Arroud[1]._X = pPlayer->_old_Pos._X + lineX[dfLEFT];
+		pRemoveSector->Arroud[1]._Y = pPlayer->_old_Pos._Y + lineY[dfLEFT];
+		//Old 왼쪽아래
+		pRemoveSector->Arroud[2]._X = pPlayer->_old_Pos._X + lineX[dfLEFTDOWN];
+		pRemoveSector->Arroud[2]._Y = pPlayer->_old_Pos._Y + lineY[dfLEFTDOWN];
+		//Old 아래
+		pRemoveSector->Arroud[3]._X = pPlayer->_old_Pos._X + lineX[dfDOWN];
+		pRemoveSector->Arroud[3]._Y = pPlayer->_old_Pos._Y + lineY[dfDOWN];
+		//Old 오른쪽 아래
+		pRemoveSector->Arroud[4]._X = pPlayer->_old_Pos._X + lineX[dfRIGHTDOWN];
+		pRemoveSector->Arroud[4]._Y = pPlayer->_old_Pos._Y + lineY[dfRIGHTDOWN];
+
+		pAddSector->iCount = 5;
+		pRemoveSector->iCount = 5;
+		break;
+	case 9://빈공간
+		return;
+	}
+
+
+};
+
+//캐릭터의 월드 좌표를토대로 섹터의 좌표를 갱신하는 함수
+bool Sector_UpdatePlayer(st_PLAYER* pPlayer)
+{
+	int Cur_X;
+	int Cur_Y;
+	int Old_X;
+	int Old_Y;
+
+	Cur_X = pPlayer->_X / dfSECTOR_SIZE;
+	Cur_Y = pPlayer->_Y / dfSECTOR_SIZE;
+
+	if (!Sector_Check(Cur_X, Cur_Y))//섹터 범위를 벗어난게 있다면 전송안함
+	{
+		return false;
+	}
+
+	pPlayer->_old_Pos._X = pPlayer->_cur_Pos._X;
+	pPlayer->_old_Pos._Y = pPlayer->_cur_Pos._Y;
+
+	Old_X = pPlayer->_old_Pos._X;
+	Old_Y = pPlayer->_old_Pos._Y;
+
+	pPlayer->_cur_Pos._X = Cur_X;
+	pPlayer->_cur_Pos._Y = Cur_Y;
+
+	//섹터좌표가 변경이 있었다면?
+	//둘중 하나라도 다르다면 섹터의 변화가 있었다는 뜻이다.
+	if ((Cur_X != Old_X) ||
+		(Cur_Y != Old_Y))
+	{
+		g_Sector[Cur_Y][Cur_X].push_back(pPlayer);//새로운 섹터에 나를 추가하고
+		//예전 섹터에서 나를 제거한다.
+		for (auto _Sector_iter = g_Sector[Old_Y][Old_X].begin(); 
+			_Sector_iter != g_Sector[Old_Y][Old_X].end(); ++_Sector_iter)
+		{
+			if ((*_Sector_iter)->_Id == pPlayer->_Id)//리스트를 순회하면서 아이디가 일치하는지 확인하고.
+			{
+				g_Sector[pPlayer->_old_Pos._Y][pPlayer->_old_Pos._X].erase(_Sector_iter);//일치한다면 제거
+				//어차피 멀티스레드 아니니까 동기화 신경 안써도 그만이다.
+				break;
+			}
+		}
+//#ifdef df_LOG
+		printf("LOG : SECTOR_CHANGE Cur_X : %d Cur_Y : %d Old_X : %d Old_Y : %d\n", Cur_X, Cur_Y, Old_X, Old_Y);
+//#endif
+		return true;//모든게 종료된후 섹터변경이 있었다는걸 전달한다.
+	}
+	else
+	{
+		return false;//섹터변경이 없었다면 false리턴
+	}
+};
+
+bool Sector_Check(int _PX, int _PY)
+{
+	if (_PX < 0 ||
+		_PX >= dfSECTOR_X ||
+		_PY < 0 ||
+		_PY >= dfSECTOR_Y)//섹터 범위를 벗어난게 있다면 전송안함
+	{
+		return false;
+	}
+	return true;
+}
+
+void PlayerSectorUpdatePacket(st_PLAYER* pPlayer) 
+{
+	//여기에 들어왔다는건 섹터이동이 발생했다는뜻이다.
+	st_SECTOR_AROUND AddSector;
+	st_SECTOR_AROUND RemoveSector;
+
+	st_PLAYER* pExistPlayer;
+
+	list<st_PLAYER*>* pSectorList;
+	list<st_PLAYER*>::iterator ListIter;
+
+	CSerealBuffer cPacket;
+
+	GetUpdateSectorAround(pPlayer,&RemoveSector,&AddSector);//섹터를 이동하기위에
+
+	mp_DELETE_CHARACTER(&cPacket, pPlayer->_Id);
+
+	//Remove섹터에 캐릭터 삭제 패킷 보내기
+	for (int iRemoveCnt = 0; iRemoveCnt < RemoveSector.iCount; iRemoveCnt++)
+	{
+		if(!Sector_Check(RemoveSector.Arroud[iRemoveCnt]._X,RemoveSector.Arroud[iRemoveCnt]._Y))
+			continue;
+
+		sendPacket_SectorOne(pPlayer->pSession,
+			&cPacket,
+			RemoveSector.Arroud[iRemoveCnt]._X,
+			RemoveSector.Arroud[iRemoveCnt]._Y);
+	}
+
+	////지금 움직이는 유저에게 RemoveSector의 캐릭터들 삭제 패킷 보내기
+	for (int iMoveCnt = 0; iMoveCnt < RemoveSector.iCount; iMoveCnt++)
+	{
+		if (!Sector_Check(RemoveSector.Arroud[iMoveCnt]._X, RemoveSector.Arroud[iMoveCnt]._Y))
+			continue;
+
+		pSectorList = &g_Sector[RemoveSector.Arroud[iMoveCnt]._Y][RemoveSector.Arroud[iMoveCnt]._X];
+		for (auto ListIter = pSectorList->begin(); ListIter != pSectorList->end(); ListIter++)
+		{
+			cPacket.Clear();
+			mp_DELETE_CHARACTER(&cPacket, (*ListIter)->_Id);
+			//특정 클라이언트 하나에게 전달
+			sendPacket_UniCast(pPlayer->pSession, &cPacket);
+		}
+	}
+
+	//AddSector에 캐릭터 생성 패킷 보내기
+	cPacket.Clear();
+	mp_SC_CREATE_OTHER_CHARACTER(&cPacket, pPlayer->_Id,
+											pPlayer->_Direction,
+											pPlayer->_X,
+											pPlayer->_Y,
+											pPlayer->_HP);
+
+	for (int iCreateOne = 0; iCreateOne < AddSector.iCount; iCreateOne++)
+	{
+		if (!Sector_Check(AddSector.Arroud[iCreateOne]._X, AddSector.Arroud[iCreateOne]._Y))
+			continue;
+		sendPacket_SectorOne(pPlayer->pSession, &cPacket,
+			AddSector.Arroud[iCreateOne]._X,
+			AddSector.Arroud[iCreateOne]._Y);
+	}
+
+	//Add패킷에 생성된 이동 패킷 보내기
+	cPacket.Clear();
+	mp_MOVE_START(&cPacket, pPlayer->_Id, 
+		pPlayer->_Direction, 
+		pPlayer->_X, 
+		pPlayer->_Y);
+
+	for (int iMyMoveOne = 0; iMyMoveOne < AddSector.iCount; iMyMoveOne++)
+	{
+		if (!Sector_Check(AddSector.Arroud[iMyMoveOne]._X, AddSector.Arroud[iMyMoveOne]._Y))
+			continue;
+
+		sendPacket_SectorOne(pPlayer->pSession, &cPacket,
+			AddSector.Arroud[iMyMoveOne]._X,
+			AddSector.Arroud[iMyMoveOne]._Y);
+	}
+
+	//4.이동한 녀석에게 AddSector에 있는 캐릭터 생성 패킷
+	for (int ilistAdd = 0; ilistAdd < AddSector.iCount; ilistAdd++)
+	{
+		//섹터범위 벗어났으면 무시
+		if (!Sector_Check(RemoveSector.Arroud[ilistAdd]._X, RemoveSector.Arroud[ilistAdd]._Y))
+			continue;
+
+		//얻어진 섹터에서 리스트 접근
+		pSectorList = &g_Sector[RemoveSector.Arroud[ilistAdd]._Y][RemoveSector.Arroud[ilistAdd]._X];
+
+		//해당 섹터마다 등록된 캐릭터들을 뽑아서 생성 패킷으로 만들어서 보낸다.
+		for (auto AddListIter = pSectorList->begin(); AddListIter != pSectorList->end(); AddListIter++)
+		{
+			pExistPlayer = *AddListIter;
+
+			//내가 아닌경우에만
+			if (pExistPlayer!=pPlayer)
+			{
+				cPacket.Clear();
+				mp_SC_CREATE_OTHER_CHARACTER(&cPacket, pExistPlayer->_Id,
+													pExistPlayer->_Direction,
+													pExistPlayer->_X,
+													pExistPlayer->_Y,
+													pExistPlayer->_HP);
+				sendPacket_UniCast(pPlayer->pSession, &cPacket);
+
+				//내가 아닌데 걷고있는 유저확인
+				if (pPlayer->_Direction_check != ON_MOVE || pPlayer->_Live != true)
+				{
+					//움직이지 않아도 되는 세션이거나
+					continue;//죽어있는 세션이라면 계산을 하지 않는다.
+				}
+				//움직이고 있는 유저이므로 움직이는 값을 던져준다.
+				switch (pExistPlayer->_Direction)
+				{
+					case dfPACKET_MOVE_DIR_UU:
+					case dfPACKET_MOVE_DIR_LU:
+					case dfPACKET_MOVE_DIR_LL:
+					case dfPACKET_MOVE_DIR_LD:
+					case dfPACKET_MOVE_DIR_DD:
+					case dfPACKET_MOVE_DIR_RD:
+					case dfPACKET_MOVE_DIR_RU:
+						cPacket.Clear();
+						mp_MOVE_START(&cPacket, pExistPlayer->_Id,
+							pExistPlayer->_Direction,
+							pExistPlayer->_X,
+							pExistPlayer->_Y);
+						sendPacket_UniCast(pPlayer->pSession, &cPacket);
+						break;
+				}
+
+			}
+		}
+		sendPacket_SectorOne(pPlayer->pSession, &cPacket,
+			AddSector.Arroud[ilistAdd]._X,
+			AddSector.Arroud[ilistAdd]._Y);
+	}
+	
+
+
+
+}

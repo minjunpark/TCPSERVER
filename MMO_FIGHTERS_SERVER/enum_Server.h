@@ -32,6 +32,15 @@ enum SERVER_GAME
 	//dfRANGE_MOVE_RIGHT = 630,
 	//dfRANGE_MOVE_BOTTOM = 470,
 
+	dfUP = 0,
+	dfLEFTUP = 1,
+	dfLEFT = 2,
+	dfLEFTDOWN = 3,
+	dfDOWN = 4,
+	dfRIGHTDOWN = 5,
+	dfRIGHT = 6,
+	dfRIGHTUP = 7,
+
 	dfSECTOR_SIZE = 64,
 	dfSECTOR_X = 100,
 	dfSECTOR_Y = 100,
@@ -85,7 +94,7 @@ struct st_SECTOR_POS
 //특정 위치 주변의 9개 섹터 정보
 struct st_SECTOR_AROUND
 {
-	int iCount;
+	int iCount = 0;
 	st_SECTOR_POS Arroud[9];
 };
 

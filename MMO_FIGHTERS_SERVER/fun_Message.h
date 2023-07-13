@@ -1,6 +1,7 @@
 #pragma once
 #include <math.h>
 #include <stdio.h>
+
 bool netPacketProc_SC_CREATE_MY_CHARACTER(st_SESSION* pSession, CSerealBuffer* pPacket);
 void mp_SC_CREATE_MY_CHARACTER(CSerealBuffer* pPacket, int p_id, char p_Direction, short p_X, short p_Y, char p_Hp);
 
@@ -36,21 +37,26 @@ bool netPacketProc_SC_CREATE_MY_CHARACTER(st_SESSION* pSession, CSerealBuffer* p
 {
 	st_PLAYER* pPlayer;
 	pPlayer = Find_Player(pSession->_Id);
+	
 	if (pPlayer == nullptr)//플레이어를 찾지 못했다면 널포인터
 	{
 		return false;
 	}
-
 	//XY위치 랜덤으로 생성
 	//6400 6400이하에서 값가져오기
-	
+	//pPlayer->_X = 3200;
+	//pPlayer->_Y = 3200;
 	//섹터위치 지정//추후조정
-
-	//지정된 XY와 섹터를 클라이언트에게 전달한다.
-
+	//pPlayer->_Y = 6360;
+	//pPlayer->_X = 6360;
+	//Sector_UpdatePlayer(pPlayer);//현재 내 섹터위치를 업데이트한다.
+	
+	//섹터 유저리스트에 데이터를 넣는다.
+	//g_Sector[pPlayer->_cur_Pos._Y][pPlayer->_cur_Pos._X].push_back(pPlayer);
+	
 	CSerealBuffer MyCreate;
 	mp_SC_CREATE_MY_CHARACTER(&MyCreate, pPlayer->_Id, pPlayer->_Direction, pPlayer->_X, pPlayer->_Y, pPlayer->_HP);
-	sendUniCast(pSession, &MyCreate);
+	sendPacket_UniCast(pSession, &MyCreate);//나한테 전달하고
 
 #ifdef df_LOG
 	printf("Create Character # SessionID %d  X:%d Y:%d\n", pSession->_Id, defualt_X_SET, defualt_Y_SET);
@@ -87,7 +93,10 @@ bool netPacketProc_SC_CREATE_OTHER_CHARACTER(st_SESSION* pSession, CSerealBuffer
 	
 	CSerealBuffer OtherCreate;
 	mp_SC_CREATE_OTHER_CHARACTER(&OtherCreate, _Id, _Direction, _X, _Y, _Hp);
-	sendBroadCast(pSession, &OtherCreate);
+	//sendBroadCast(pSession, &OtherCreate);
+	//생성된 나를 섹터 주변에 전달
+	//나는 제외하고 데이터를 보낸다.
+	sendPacket_Around(pSession, &OtherCreate, true);
 	return true;
 };
 
@@ -111,7 +120,8 @@ bool netPacketProc_DELETE_CHARACTER(st_SESSION* pSession, CSerealBuffer* pPacket
 {
 	CSerealBuffer Deletebuf;
 	mp_DELETE_CHARACTER(&Deletebuf, pSession->_Id);
-	sendBroadCast(pSession, &Deletebuf);
+	//sendBroadCast(pSession, &Deletebuf);
+	sendPacket_Around(pSession, &Deletebuf, false);
 #ifdef df_LOG
 	printf("Delete Session # SessionID %d \n", pSession->_Id);
 #endif
@@ -132,7 +142,7 @@ void mp_DELETE_CHARACTER(CSerealBuffer* pPacket, int p_id)
 //dfPACKET_SC_MOVE_START
 bool netPacketProc_MOVE_START(st_SESSION* pSession, CSerealBuffer* pPacket)
 {
-	char _Direction;
+	BYTE _Direction;
 	short _X;
 	short _Y;
 	*pPacket >> _Direction;
@@ -140,23 +150,26 @@ bool netPacketProc_MOVE_START(st_SESSION* pSession, CSerealBuffer* pPacket)
 	*pPacket >> _Y;
 
 	st_PLAYER* pPlayer;
-	pPlayer = Find_Player(pSession->_Id);
+	pPlayer = Find_Player(pSession->_Id);//ID를 검색한다.
 	if (pPlayer == nullptr)
 	{
 		return false;
 	}
 
-	//들어온세션의 이동데이터의 좌표가 너무 어긋나있으면 강제로 좌표 동기화
+	//들어온세션의 이동데이터의 좌표가 너무 어긋나있으면 현재 서버의 위치로 좌표동기화
 	if (abs(pPlayer->_X - _X) > dfERROR_RANGE ||
 		abs(pPlayer->_Y - _Y) > dfERROR_RANGE)
 	{
-		Disconnect(pSession);
-		return false;
-		//CSerealBuffer sPacket;
-		//mp_Sync(&sPacket, pPlayer->_Id, pPlayer->_X, pPlayer->_Y);
+		//Disconnect(pSession);
+		//return false;
+		CSerealBuffer sPacket;
+		mp_Sync(&sPacket, pPlayer->_Id, pPlayer->_X, pPlayer->_Y);
+		
 		//sendBroadCast(pSession, &sPacket);
-		//_X = pPlayer->_X;
-		//_Y = pPlayer->_Y;
+		//sendPacket_Around(pSession, &sPacket, false);
+		sendPacket_UniCast(pSession,&sPacket);
+		_X = pPlayer->_X;
+		_Y = pPlayer->_Y;
 	}
 
 	//동작변경
@@ -168,13 +181,18 @@ bool netPacketProc_MOVE_START(st_SESSION* pSession, CSerealBuffer* pPacket)
 	pPlayer->_X = _X;//받은 크기값을 넣는다.
 	pPlayer->_Y = _Y;//받은 크기값을 넣는다.
 
+	//좌표가 조절된경우 섹터를 업데이트할것
+	// 
+	//우선여기서는 아직 안함
+
 	//직렬화 버퍼를 생성한후 보낸다.
 	CSerealBuffer MoveStart;
 	mp_MOVE_START(&MoveStart, pPlayer->_Id, _Direction, _X, _Y);
+
 	sendBroadCast(pSession, &MoveStart);
 
 #ifdef df_LOG
-	printf("PACKET_MOVESTART # SessionID: %d / Direction:%d / X:%d / Y:%d\n", pSession->_Id, pSession->_Direction, pSession->_X, pSession->_Y);
+	printf("PACKET_MOVESTART # SessionID: %d / Direction:%d / X:%d / Y:%d\n", pPlayer->_Id, pPlayer->_Direction, pPlayer->_X, pPlayer->_Y);
 #endif
 	return true;
 };
@@ -207,7 +225,7 @@ void mp_MOVE_START(CSerealBuffer* pPacket, int p_id, char p_Direction, short p_X
 //dfPACKET_MOVE_STOP
 bool netPacketProc_MOVE_STOP(st_SESSION* pSession, CSerealBuffer* pPacket)
 {
-	char _Direction;
+	BYTE _Direction;
 	short _X;
 	short _Y;
 	*pPacket >> _Direction;
@@ -225,8 +243,15 @@ bool netPacketProc_MOVE_STOP(st_SESSION* pSession, CSerealBuffer* pPacket)
 	if (abs(pPlayer->_X - _X) > dfERROR_RANGE ||
 		abs(pPlayer->_Y - _Y) > dfERROR_RANGE)
 	{
-		Disconnect(pSession);
-		return false;
+		//Disconnect(pSession);
+		//return false;
+		CSerealBuffer sPacket;
+		mp_Sync(&sPacket, pPlayer->_Id, pPlayer->_X, pPlayer->_Y);
+		sendPacket_UniCast(pSession, &sPacket);
+		//sendPacket_Around(nullptr, &sPacket, false);
+		//sendBroadCast(pSession, &sPacket);
+		_X = pPlayer->_X;
+		_Y = pPlayer->_Y;
 	}
 
 	//동작변경
@@ -239,7 +264,7 @@ bool netPacketProc_MOVE_STOP(st_SESSION* pSession, CSerealBuffer* pPacket)
 	mp_MOVE_STOP(&MoveStop, pPlayer->_Id, _Direction, _X, _Y);
 	sendBroadCast(pSession, &MoveStop);
 #ifdef df_LOG
-	printf("PACKET_MOVESTOP # SessionID: %d / Direction:%d / X:%d / Y:%d\n", pSession->_Id, pSession->_Direction, pSession->_X, pSession->_Y);
+	printf("PACKET_MOVESTOP # SessionID: %d / Direction:%d / X:%d / Y:%d\n", pPlayer->_Id, pPlayer->_Direction, pPlayer->_X, pPlayer->_Y);
 #endif
 	return true;
 }
@@ -279,8 +304,14 @@ bool netPacketProc_ATTACK1(st_SESSION* pSession, CSerealBuffer* pPacket)
 	if (abs(pPlayer->_X - _X) > dfERROR_RANGE ||
 		abs(pPlayer->_Y - _Y) > dfERROR_RANGE)
 	{
-		Disconnect(pSession);
-		return false;
+		//Disconnect(pSession);
+		//return false;
+		CSerealBuffer sPacket;
+		mp_Sync(&sPacket, pPlayer->_Id, pPlayer->_X, pPlayer->_Y);
+		//sendBroadCast(pSession, &sPacket);
+		sendPacket_UniCast(pSession, &sPacket);
+		_X = pPlayer->_X;
+		_Y = pPlayer->_Y;
 	}
 
 	//받은 데이터를 서버 세션리스트 값에 업데이트 시켜준다.
@@ -291,7 +322,8 @@ bool netPacketProc_ATTACK1(st_SESSION* pSession, CSerealBuffer* pPacket)
 
 	CSerealBuffer Attack1;
 	mp_ATTACK1(&Attack1, pSession->_Id, _Direction, _X, _Y);
-	sendBroadCast(pSession, &Attack1);
+	sendPacket_Around(pSession,&Attack1,false);
+	//sendBroadCast(pSession, &Attack1);
 
 	//범위내에 적이 있는지 확인하고 적이 있다면 모두 타격한다.
 	st_SESSION* Atk_tmp_Session;
@@ -299,22 +331,22 @@ bool netPacketProc_ATTACK1(st_SESSION* pSession, CSerealBuffer* pPacket)
 	{
 		Atk_tmp_Session = session_it->second;
 		st_PLAYER* Atk_tmp_Player;
-		Atk_tmp_Player = Find_Player(pSession->_Id);
+		Atk_tmp_Player = Find_Player(Atk_tmp_Session->_Id);
 		if (Atk_tmp_Player == nullptr)
 		{
 			return false;
 		}
-
+		
 		if (Atk_tmp_Session->_Live == false)
 		{
 			continue;//죽어있는 패킷 무시
 		}
-
+		
 		if (pPlayer->_Id == Atk_tmp_Player->_Id)//나 자신이라면 제외한다.
 		{
 			continue;
 		}
-
+		
 		switch (pPlayer->_Direction)//왼쪽 오른쪽 구분
 		{
 		case dfPACKET_MOVE_DIR_LL:
@@ -334,6 +366,7 @@ bool netPacketProc_ATTACK1(st_SESSION* pSession, CSerealBuffer* pPacket)
 					CSerealBuffer Damage;
 					mp_DAMAGE(&Damage, pPlayer->_Id, Atk_tmp_Player->_Id, Atk_tmp_Player->_HP);
 					sendBroadCast(nullptr, &Damage);
+					//sendPacket_Around(pSession, &Damage, false);
 				}
 			}
 		}
@@ -355,6 +388,7 @@ bool netPacketProc_ATTACK1(st_SESSION* pSession, CSerealBuffer* pPacket)
 					CSerealBuffer Damage;
 					mp_DAMAGE(&Damage, pPlayer->_Id, Atk_tmp_Player->_Id, Atk_tmp_Player->_HP);
 					sendBroadCast(nullptr, &Damage);
+					//sendPacket_Around(pSession, &Damage, false);
 				}
 			}
 		}
@@ -362,7 +396,7 @@ bool netPacketProc_ATTACK1(st_SESSION* pSession, CSerealBuffer* pPacket)
 		}
 	}
 #ifdef df_LOG
-	printf("PACKET_ATTACK1 # SessionID: %d / Direction:%d / X:%d / Y:%d\n", pSession->_Id, pSession->_Direction, pSession->_X, pSession->_Y);
+	printf("PACKET_ATTACK1 # SessionID: %d / Direction:%d / X:%d / Y:%d\n", pPlayer->_Id, pPlayer->_Direction, pPlayer->_X, pPlayer->_Y);
 #endif
 	return true;
 
@@ -405,8 +439,14 @@ bool netPacketProc_ATTACK2(st_SESSION* pSession, CSerealBuffer* pPacket)
 	if (abs(pPlayer->_X - _X) > dfERROR_RANGE ||
 		abs(pPlayer->_Y - _Y) > dfERROR_RANGE)
 	{
-		Disconnect(pSession);
-		return false;
+		//Disconnect(pSession);
+		//return false;
+		CSerealBuffer sPacket;
+		mp_Sync(&sPacket, pPlayer->_Id, pPlayer->_X, pPlayer->_Y);
+		//sendBroadCast(pSession, &sPacket);
+		sendPacket_UniCast(pSession, &sPacket);
+		_X = pPlayer->_X;
+		_Y = pPlayer->_Y;
 	}
 
 	//받은 데이터를 서버 세션리스트 값에 업데이트 시켜준다.
@@ -417,7 +457,8 @@ bool netPacketProc_ATTACK2(st_SESSION* pSession, CSerealBuffer* pPacket)
 	
 	CSerealBuffer Attack2;
 	mp_ATTACK2(&Attack2, pPlayer->_Id, _Direction, _X, _Y);
-	sendBroadCast(pSession, &Attack2);
+	//sendBroadCast(pSession, &Attack2);
+	sendPacket_Around(pSession, &Attack2, false);
 
 	//범위내에 적이 있는지 확인하고 적이 있다면 모두 타격한다.
 	st_SESSION* Atk2_tmp_Session;
@@ -426,7 +467,7 @@ bool netPacketProc_ATTACK2(st_SESSION* pSession, CSerealBuffer* pPacket)
 		Atk2_tmp_Session = session_it->second;
 
 		st_PLAYER* Atk2_tmp_Player;
-		Atk2_tmp_Player = Find_Player(pSession->_Id);
+		Atk2_tmp_Player = Find_Player(Atk2_tmp_Session->_Id);
 		if (Atk2_tmp_Player == nullptr)
 		{
 			return false;
@@ -460,7 +501,8 @@ bool netPacketProc_ATTACK2(st_SESSION* pSession, CSerealBuffer* pPacket)
 				{
 					CSerealBuffer Damage;
 					mp_DAMAGE(&Damage, pPlayer->_Id, Atk2_tmp_Player->_Id, Atk2_tmp_Player->_HP);
-					sendBroadCast(nullptr, &Damage);
+					//sendBroadCast(nullptr, &Damage);
+					sendPacket_Around(pSession, &Damage, false);
 				}
 			}
 		}
@@ -481,7 +523,8 @@ bool netPacketProc_ATTACK2(st_SESSION* pSession, CSerealBuffer* pPacket)
 				{
 					CSerealBuffer Damage;
 					mp_DAMAGE(&Damage, pPlayer->_Id, Atk2_tmp_Player->_Id, Atk2_tmp_Player->_HP);
-					sendBroadCast(nullptr, &Damage);
+					//sendBroadCast(nullptr, &Damage);
+					sendPacket_Around(pSession, &Damage, false);
 				}
 			}
 		}
@@ -490,7 +533,7 @@ bool netPacketProc_ATTACK2(st_SESSION* pSession, CSerealBuffer* pPacket)
 	}
 
 #ifdef df_LOG
-	printf("PACKET_ATTACK2 # SessionID: %d / Direction:%d / X:%d / Y:%d\n", pSession->_Id, pSession->_Direction, pSession->_X, pSession->_Y);
+	printf("PACKET_ATTACK2 # SessionID: %d / Direction:%d / X:%d / Y:%d\n", pPlayer->_Id, pPlayer->_Direction, pPlayer->_X, pPlayer->_Y);
 #endif
 	return true;
 }
@@ -530,8 +573,14 @@ bool netPacketProc_ATTACK3(st_SESSION* pSession, CSerealBuffer* pPacket)
 	if (abs(pPlayer->_X - _X) > dfERROR_RANGE ||
 		abs(pPlayer->_Y - _Y) > dfERROR_RANGE)
 	{
-		Disconnect(pSession);
-		return false;
+		//Disconnect(pSession);
+		//return false;
+		CSerealBuffer sPacket;
+		mp_Sync(&sPacket, pPlayer->_Id, pPlayer->_X, pPlayer->_Y);
+		//sendBroadCast(pSession, &sPacket);
+		sendPacket_UniCast(pSession, &sPacket);
+		_X = pPlayer->_X;
+		_Y = pPlayer->_Y;
 	}
 
 	//받은 데이터를 서버 세션리스트 값에 업데이트 시켜준다.
@@ -542,7 +591,8 @@ bool netPacketProc_ATTACK3(st_SESSION* pSession, CSerealBuffer* pPacket)
 
 	CSerealBuffer Attack3;
 	mp_ATTACK3(&Attack3, pPlayer->_Id, _Direction, _X, _Y);
-	sendBroadCast(pSession, &Attack3);
+	//sendBroadCast(pSession, &Attack3);
+	sendPacket_Around(pSession, &Attack3, false);
 
 	//범위내에 적이 있는지 확인하고 적이 있다면 모두 타격한다.
 	st_SESSION* Atk3_tmp_Session;
@@ -551,7 +601,7 @@ bool netPacketProc_ATTACK3(st_SESSION* pSession, CSerealBuffer* pPacket)
 		Atk3_tmp_Session = session_it->second;
 
 		st_PLAYER* Atk3_tmp_Player;
-		Atk3_tmp_Player = Find_Player(pSession->_Id);
+		Atk3_tmp_Player = Find_Player(Atk3_tmp_Session->_Id);
 		if (Atk3_tmp_Player == nullptr)
 		{
 			return false;
@@ -585,7 +635,8 @@ bool netPacketProc_ATTACK3(st_SESSION* pSession, CSerealBuffer* pPacket)
 				{
 					CSerealBuffer Damage;
 					mp_DAMAGE(&Damage, pPlayer->_Id, Atk3_tmp_Player->_Id, Atk3_tmp_Player->_HP);
-					sendBroadCast(nullptr, &Damage);
+					//sendBroadCast(nullptr, &Damage);
+					sendPacket_Around(pSession, &Damage, false);
 				}
 			}
 		}
@@ -606,7 +657,8 @@ bool netPacketProc_ATTACK3(st_SESSION* pSession, CSerealBuffer* pPacket)
 				{
 					CSerealBuffer Damage;
 					mp_DAMAGE(&Damage, pPlayer->_Id, Atk3_tmp_Player->_Id, Atk3_tmp_Player->_HP);
-					sendBroadCast(nullptr, &Damage);
+					//sendBroadCast(nullptr, &Damage);
+					sendPacket_Around(pSession, &Damage, false);
 				}
 			}
 		}
@@ -614,7 +666,7 @@ bool netPacketProc_ATTACK3(st_SESSION* pSession, CSerealBuffer* pPacket)
 		}
 	}
 #ifdef df_LOG
-	printf("PACKET_ATTACK3 # SessionID: %d / Direction:%d / X:%d / Y:%d\n", pSession->_Id, pSession->_Direction, pSession->_X, pSession->_Y);
+	printf("PACKET_ATTACK3 # SessionID: %d / Direction:%d / X:%d / Y:%d\n", pPlayer->_Id, pPlayer->_Direction, pPlayer->_X, pPlayer->_Y);
 #endif
 
 	return true;
