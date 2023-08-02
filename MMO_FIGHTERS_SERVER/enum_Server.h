@@ -40,10 +40,18 @@ enum SERVER_GAME
 	dfRIGHTDOWN = 5,
 	dfRIGHT = 6,
 	dfRIGHTUP = 7,
-
-	dfSECTOR_SIZE = 64,
-	dfSECTOR_X = 100,
-	dfSECTOR_Y = 100,
+	//1Ä­
+	//dfSECTOR_SIZE = 64,
+	//dfSECTOR_X = 100,
+	//dfSECTOR_Y = 100,
+	//2Ä­
+	//dfSECTOR_SIZE = 128,
+	//dfSECTOR_X = 50,
+	//dfSECTOR_Y = 50,
+	//5Ä­
+	dfSECTOR_SIZE = 320,
+	dfSECTOR_X = 20,
+	dfSECTOR_Y = 20,
 
 	dfRANGE_MOVE_TOP = 0,
 	dfRANGE_MOVE_LEFT = 0,
@@ -54,10 +62,15 @@ enum SERVER_GAME
 	//Y Ãà - 2
 	defualt_X_SET = 320,
 	defualt_Y_SET = 240,
+	df_TEST_X = 150,
+	df_TEST_Y = 150,
 	defualt_HP = 100,
 	default_Direction = 0,
-	defualt_MOVE_X = 3,
-	defualt_MOVE_Y = 2,
+	//defualt_MOVE_X = 3,
+	//defualt_MOVE_Y = 2,
+	dfFrame_time = 40,
+	defualt_MOVE_X = 6,
+	defualt_MOVE_Y = 4,
 	ON_MOVE = 1,
 	ON_STOP = 0,
 	df_HP=100,
@@ -82,6 +95,8 @@ enum SERVER_GAME
 	dfATTACK2_DAMAGE = 2,
 	dfATTACK3_DAMAGE = 3,
 	dfNETWORK_PACKET_RECV_TIMEOUT = 30000
+
+	
 };
 
 //¼½ÅÍ ÇÏ³ªÀÇ ÁÂÇ¥ Á¤º¸
