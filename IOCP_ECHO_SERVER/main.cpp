@@ -1,11 +1,19 @@
 ﻿#pragma warning(disable:4996)
 #pragma comment(lib, "ws2_32.lib")
 #include <cstdio>
-#include<Winsock2.h>
+#include <iostream>
 #include<stdlib.h>
 #include <conio.h>
-#include "CRingBuffer.h"
 #include <unordered_map>
+#include <Winsock2.h>
+#include <cstdlib>
+#include <cstdio>
+#include <process.h>
+#include <windows.h>
+
+#include "CRingBuffer.h"
+#include "CSerealBuffer.h"
+
 #define PORT	9000
 #define BUFSIZE 512
 
@@ -15,12 +23,13 @@ using namespace std;
 struct SESSION
 {
 	SOCKET _Sock;
+	DWORD _Id;
 	SOCKADDR_IN _Sock_Addr;
 	CRingBuffer _SendBuf;
 	CRingBuffer _RecvBuf;
 	OVERLAPPED _SendOver;
 	OVERLAPPED _RecvOver;
-	BOOL _Live;
+	BOOL _IO_Live;
 	DWORD _IO_COUNT;
 };
 
@@ -36,12 +45,16 @@ unsigned __stdcall WorkerThread(void* pComPort);
 HANDLE IOCP_WORKER_POOL;
 BOOL g_Shutdown = false;
 
-unordered_map <SOCKET, SESSION> g_SESSION_LIST;
-
+unordered_map <DWORD, SESSION*> SESSION_MAP;
+DWORD UNI_KEY = 0;
 //오류 출력 함수
 void init_socket();
 void err_quit(const char* msg);
 BOOL Socket_Error();
+void RecvPost(SESSION* _pSession);
+void SendPost(SESSION* _pSession);
+BOOL SesionRelease(SESSION* _pSession);
+
 
 int main()
 {
@@ -54,6 +67,7 @@ int main()
 		if (key == 's')
 		{
 			printf("process Stop START\n");
+			closesocket(listen_socket);
 			g_Shutdown = true;
 			for (int i = 0; i < Thread_Count; i++)
 				PostQueuedCompletionStatus(IOCP_WORKER_POOL, 0, 0, 0);
@@ -101,9 +115,10 @@ unsigned __stdcall AcceptThread(void* pComPort)
 
 		ZeroMemory(&_Session_User->_SendOver, sizeof(_Session_User->_SendOver));
 		ZeroMemory(&_Session_User->_RecvOver, sizeof(_Session_User->_RecvOver));
+		_Session_User->_Id = UNI_KEY++;
 		_Session_User->_Sock = clientsock;
 		_Session_User->_Sock_Addr = clientaddr;
-		_Session_User->_Live = true;
+		_Session_User->_IO_Live = true;
 		_Session_User->_SendBuf.ClearBuffer();
 		_Session_User->_RecvBuf.ClearBuffer();
 		_Session_User->_IO_COUNT = 0;
@@ -113,9 +128,11 @@ unsigned __stdcall AcceptThread(void* pComPort)
 
 		//setsockopt(clientsock, SOL_SOCKET, SO_SNDBUF, (char*)&bufSize, sizeof(bufSize));
 		getsockopt(clientsock, SOL_SOCKET, SO_SNDBUF, (char*)&bufSize, &optionLen);
-		printf("송신 버퍼 크기 : %d\n", bufSize);
+
 		//비동기 입출력 시작
 		DWORD flags = 0;
+
+		SESSION_MAP.emplace(_Session_User->_Id, _Session_User);
 
 		WSABUF wsaBuf[2];
 		wsaBuf[0].buf = _Session_User->_RecvBuf.GetFrontBufferPtr();//읽기포인터
@@ -126,15 +143,18 @@ unsigned __stdcall AcceptThread(void* pComPort)
 		//포트에 값을 등록하고 _Session_User세팅
 		//CreateIoCompletionPort(INVALID_HANDLE_VALUE, NULL, 0, 0);
 		ULONG_PTR COMKEY = (ULONG_PTR)_Session_User;
+
 		CreateIoCompletionPort((HANDLE)_Session_User->_Sock, IOCP_WORKER_POOL, COMKEY, 0);
-		int retVal = WSARecv(clientsock, wsaBuf, 1, &recvbytes, &flags, &_Session_User->_RecvOver, NULL);
-		if (retVal == SOCKET_ERROR)
-		{
-			if (WSAGetLastError() != WSA_IO_PENDING) {
-				printf("WSAGetLastError() %d\n", WSAGetLastError());
-			}
-			continue;
-		}
+
+		RecvPost(_Session_User);
+		//int retVal = WSARecv(_Session_User->_Sock, wsaBuf, 1, &recvbytes, &flags, &_Session_User->_RecvOver, NULL);
+		//if (retVal == SOCKET_ERROR)
+		//{
+		//	if (WSAGetLastError() != WSA_IO_PENDING) {
+		//		printf("WSAGetLastError() %d\n", WSAGetLastError());
+		//	}
+		//	continue;
+		//}
 	}
 	printf("AcceptThread STOP!\n");
 	return 0;
@@ -153,13 +173,18 @@ unsigned __stdcall WorkerThread(void* pComPort)
 		ULONG_PTR CompletionKey;
 		LPOVERLAPPED pOverlapped;
 
+		ZeroMemory(&cbTransferred, sizeof(DWORD));
+		ZeroMemory(&CompletionKey, sizeof(ULONG_PTR));
+		ZeroMemory(&pOverlapped, sizeof(LPOVERLAPPED));
+
 		retVal = GetQueuedCompletionStatus(IOCP_WORKER_POOL, &cbTransferred, &CompletionKey, &pOverlapped, INFINITE);
+
 		SESSION* _pSESSION = (SESSION*)CompletionKey;
 
 		if (g_Shutdown) break;//스레드 정지
-		if (_pSESSION == nullptr)continue;//세션이 없을경우 스레드만 다시 실행 결함이라고 판단하고 종료하는 방법도 있음
-		if (CompletionKey == NULL)break;//키가 없다면 정지
-
+		if (_pSESSION == nullptr) continue;//세션이 없을경우 스레드만 다시 실행 결함이라고 판단하고 종료하는 방법도 있음
+		if (CompletionKey == NULL) break;//키가 없다면 정지
+		
 		SOCKADDR_IN clientaddr;
 		int addrlen = sizeof(clientaddr);
 		getpeername(_pSESSION->_Sock, (SOCKADDR*)&clientaddr, &addrlen);
@@ -172,10 +197,13 @@ unsigned __stdcall WorkerThread(void* pComPort)
 				WSAGetOverlappedResult(_pSESSION->_Sock, &_pSESSION->_RecvOver, &temp1, FALSE, &temp2);
 				//err_quit("WSAGetOverlappedResult()");
 			}
-			closesocket(_pSESSION->_Sock);
-			printf("[TCP 서버] 클라이언트 종료 : IP  주소 = %s, 포트번호 = %d\r\n",
-				inet_ntoa(clientaddr.sin_addr), ntohs(clientaddr.sin_port));
-			delete _pSESSION;
+			int ret_IO = InterlockedDecrement((LONG*)&_pSESSION->_IO_COUNT);
+			if (ret_IO <= 0)
+			{
+				printf("[TCP 서버] 클라이언트 종료 : IP  주소 = %s, 포트번호 = %d\r\n",
+					inet_ntoa(clientaddr.sin_addr), ntohs(clientaddr.sin_port));
+				SesionRelease(_pSESSION);
+			}
 			continue;
 		}
 
@@ -186,55 +214,36 @@ unsigned __stdcall WorkerThread(void* pComPort)
 			ZeroMemory(&_pSESSION->_SendOver, sizeof(_pSESSION->_SendOver));
 			ZeroMemory(&_pSESSION->_RecvOver, sizeof(_pSESSION->_RecvOver));
 
-			_pSESSION->_RecvBuf.MoveRear(cbTransferred);//받은만큼 읽기포인터이동
-			_pSESSION->_RecvBuf.Dequeue((char*)buf, cbTransferred);//받은만큼 버퍼에 데이터 뽑아내기
+			_pSESSION->_RecvBuf.MoveRear(cbTransferred);//받은만큼 쓰기포인터 이동
+			CSerealBuffer CPacket;//직렬화 버퍼 가져오기
+			CPacket.Clear();
 
-			buf[cbTransferred + 2] = '\0';//널포인터값세팅
+			int Req = _pSESSION->_RecvBuf.Dequeue((char*)CPacket.GetBufferPtr(), cbTransferred);//직렬화버퍼에 뽑아내기
+			CPacket.MoveWritePos(Req);//바로 뽑아낸만큼 데이터 이동
+			CPacket.GetData((char*)buf, cbTransferred);//버퍼에 받은 바이트만큼 데이터복사
+
+			buf[cbTransferred + 2] = '\0';//출력을위해 널포인터 세팅
 			printf("[TCP /%s : %d] ", inet_ntoa(clientaddr.sin_addr), ntohs(clientaddr.sin_port));//ip출력
 			wprintf(L"%s \n", buf);//버퍼 출력
 
-			_pSESSION->_SendBuf.Enqueue((char*)buf, cbTransferred);//리턴용 센드버퍼세팅후 버퍼값 넣기
+			CPacket.Clear();//재사용을위해 직렬화버퍼 초기화
+			CPacket.PutData((char*)buf, cbTransferred);//직렬화 버퍼에 데이터를 넣고
 
-			WSABUF wsaBufSend[2];//버퍼길이세팅 2개로 해놨는데 어차피 데이터 크지도않아서 그냥 이대로보내기로함
-			wsaBufSend[0].buf = _pSESSION->_SendBuf.GetFrontBufferPtr();//읽기포인터
-			wsaBufSend[0].len = _pSESSION->_SendBuf.GetUseSize();//뽑을수있는값
+			_pSESSION->_SendBuf.Enqueue((char*)CPacket.GetBufferPtr(), CPacket.GetUseSize());//리턴용 센드버퍼세팅후 버퍼값 넣기
+
+			InterlockedDecrement((LONG*)&_pSESSION->_IO_COUNT);
 
 			//WSASEND();
-			DWORD sendbytes;//데이터 전송
-
-			retVal = WSASend(_pSESSION->_Sock, wsaBufSend, 1, &sendbytes, 0, &_pSESSION->_SendOver, NULL);
-			if (retVal == SOCKET_ERROR) {
-				if (!Socket_Error())
-				{
-					
-				}
-				continue;
-			}
-			_pSESSION->_SendBuf.MoveFront(sendbytes);//전송한만큼 센드버퍼이동시킨다.
-
-			_pSESSION->_RecvBuf.ClearBuffer();//리시브버퍼 클리어
+			SendPost(_pSESSION);
 
 			//WSARECV();
-			WSABUF wsaBufRecv[2];
-			wsaBufRecv[0].buf = _pSESSION->_RecvBuf.GetFrontBufferPtr();//읽기포인터
-			wsaBufRecv[0].len = _pSESSION->_RecvBuf.GetFreeSize();//뽑을수있는값
-
-			DWORD recvbytes;
-			DWORD flags = 0;
-
-
-			int retVal = WSARecv(_pSESSION->_Sock, wsaBufRecv, 1, &recvbytes, &flags, &_pSESSION->_RecvOver, NULL);//리시브 재세팅
-			if (retVal == SOCKET_ERROR) {
-				if (WSAGetLastError() != WSA_IO_PENDING) {
-					printf("WSAGetLastError() %d\n", WSAGetLastError());
-				}
-				continue;
-			}
+			RecvPost(_pSESSION);
 		}
 		//send완료통지
 		if ((&_pSESSION->_SendOver) == pOverlapped)
 		{
-			_pSESSION->_SendBuf.ClearBuffer();//데이터가 모두 보내졌다는뜻이므로 버퍼를 정리한다.
+			_pSESSION->_SendBuf.MoveFront(cbTransferred);//보낸값만큼 버퍼 이동하기 이동하기
+			InterlockedDecrement((LONG*)&_pSESSION->_IO_COUNT);//완료통지가 됬다면 통신이 종료됬다는뜻
 		}
 	}
 	printf("WORKER STOP!\n");
@@ -275,7 +284,7 @@ void init_socket()
 	LINGER linger;
 	linger.l_onoff = 1;
 	linger.l_linger = 0;
-	setsockopt(listen_socket, SOL_SOCKET, SO_LINGER, (char*)&linger, sizeof(linger));	
+	setsockopt(listen_socket, SOL_SOCKET, SO_LINGER, (char*)&linger, sizeof(linger));
 
 	SOCKADDR_IN sock_addr;
 	ZeroMemory(&sock_addr, sizeof(struct sockaddr_in));
@@ -297,17 +306,116 @@ void err_quit(const char* msg) {
 		MAKELANGID(LANG_NEUTRAL, SUBLANG_DEFAULT),
 		(LPTSTR)&lpMsgBuf, 0, NULL);
 	printf("[%s] %s\n", msg, (char*)lpMsgBuf);
-	//LocalFree(lpMsgBuf);
-	//exit(1);
 }
 
-BOOL Socket_Error() 
+void RecvPost(SESSION* _pSession)
 {
-	if (WSAGetLastError() == WSA_IO_PENDING) {
+	if (_pSession == nullptr) return;
+	DWORD recvbytes;
+	DWORD flags = 0;
+	WSABUF wsaBuf[2];
+
+	int DirEn = _pSession->_RecvBuf.DirectEnqueueSize();//한번에 넣을수 있는 최대크기
+	int StartEn = _pSession->_RecvBuf.GetFreeSize() - DirEn;
+
+	int bufcount = 1;
+	if (StartEn > 0)
+		bufcount++;
+	
+	wsaBuf[0].buf = _pSession->_RecvBuf.GetRearBufferPtr();//쓰기포인터
+	wsaBuf[0].len = DirEn;//넣을수 있는값
+	wsaBuf[1].buf = _pSession->_RecvBuf.GetStartBufferPtr();//최초 지점
+	wsaBuf[1].len = StartEn;//모든 뽑을수있는 바이트에서 한번에뽑을수 있는숫자만큼빼면 원하는만큼뽑을수있음.
+	
+	int retVal = WSARecv(_pSession->_Sock, wsaBuf, bufcount, &recvbytes, &flags, &_pSession->_RecvOver, NULL);
+	if (retVal == SOCKET_ERROR)
+	{
+		if (WSAGetLastError() == WSA_IO_PENDING) 
+		{
+			InterlockedIncrement((LONG*)&_pSession->_IO_COUNT);//펜딩걸렸다면 통신중
+			return;
+		}
+		else if (WSAGetLastError() != WSA_IO_PENDING) {
+			printf("WSAGetLastError() %d\n", WSAGetLastError());
+			SesionRelease(_pSession);
+			return;
+		}
+	}
+	InterlockedIncrement((LONG*)&_pSession->_IO_COUNT);//바로 리턴된경우에도 통신중이라고 볼수 있으니까 증가시키는게 맞잖아 아닌가?
+};
+
+void SendPost(SESSION* _pSession)
+{
+	if (_pSession == nullptr) return;
+	DWORD recvbytes;
+	DWORD flags = 0;
+	WSABUF wsaBuf[2];
+
+	int DirDe = _pSession->_SendBuf.DirectDequeueSize();//한번에 넣을수 있는 최대크기
+	int StartDe = _pSession->_SendBuf.GetUseSize() - DirDe;
+
+	int bufcount = 1;
+	if (StartDe > 0)
+		bufcount++;
+
+	wsaBuf[0].buf = _pSession->_SendBuf.GetFrontBufferPtr();//쓰기포인터
+	wsaBuf[0].len = DirDe;//한번에뽑을수있는값
+	wsaBuf[1].buf = _pSession->_SendBuf.GetStartBufferPtr();//최초 지점
+	wsaBuf[1].len = StartDe;//모든 뽑을수있는 바이트에서 한번에뽑을수 있는숫자만큼빼면 원하는만큼뽑을수있음.
+
+	//WSASEND();
+	DWORD sendbytes;//데이터 전송
+	int retVal = WSASend(_pSession->_Sock, wsaBuf, bufcount, &sendbytes, 0, &_pSession->_SendOver, NULL);
+	if (retVal == SOCKET_ERROR) {
+		if (WSAGetLastError() == WSA_IO_PENDING)
+		{
+			InterlockedIncrement((LONG*)&_pSession->_IO_COUNT);//펜딩걸렸다면 통신중
+			return;
+		}
+		else if(WSAGetLastError() != WSA_IO_PENDING) {
+			printf("WSAGetLastError() %d\n", WSAGetLastError());
+			SesionRelease(_pSession);
+			return;
+		}
+	}
+	InterlockedIncrement((LONG*)&_pSession->_IO_COUNT);//펜딩걸렸다면 통신중
+};
+
+
+BOOL SesionRelease(SESSION* _pSession)
+{
+	auto sMap = SESSION_MAP.find(_pSession->_Id);
+	
+	if (sMap  != SESSION_MAP.end()) 
+	{
+		SESSION_MAP.erase(sMap);//세션맵에서 제거하고
+		closesocket(_pSession->_Sock);
+		delete _pSession;
+		return true;
+	}
+	else
+		return false;//요소를 발견하지 못했다.
+};
+
+
+BOOL Socket_Error()
+{
+	int WSAError = WSAGetLastError();
+	if (WSAError == WSA_IO_PENDING) {
 		err_quit("WSA_IO_PENDING()");
 		return true;
 	}
-	if (WSAGetLastError() != WSA_IO_PENDING) {
+	if (WSAError == WSAECONNRESET//현재 연결은 원격 호스트에 의해 강제로 끊겼습니다.
+		|| WSAError == WSAECONNABORTED//소프트웨어로 인해 연결이 중단되었습니다.
+		|| WSAError == WSANOTINITIALISED//성공한 WSAStartup이 아직 수행되지 않았습니다.
+		|| WSAError == WSAEWOULDBLOCK//이 오류는 즉시 완료할 수 없는 비블로킹 소켓의 작업에서 반환됩니다
+		|| WSAError == WSAEFAULT)//주소가 잘못되었습니다. 애플리케이션이 잘못된 포인터 값을 전달하거나 버퍼의 길이가 너무 작은 경우에 발생
+
+	{
+		//return;
+	}
+
+	if (WSAError != WSA_IO_PENDING) {
 		err_quit("WSASend()");
 		return false;
 	}
