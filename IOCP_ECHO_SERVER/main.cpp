@@ -10,6 +10,7 @@
 #include <cstdio>
 #include <process.h>
 #include <windows.h>
+#include <queue>
 
 #include "CRingBuffer.h"
 #include "CSerealBuffer.h"
@@ -30,7 +31,9 @@ struct SESSION
 	OVERLAPPED _SendOver;
 	OVERLAPPED _RecvOver;
 	BOOL _IO_Live;
+	BOOL _SendFlag;
 	DWORD _IO_COUNT;
+	SRWLOCK _LOCK;
 };
 
 HANDLE _CreateThread[30];
@@ -41,11 +44,21 @@ SOCKET listen_socket;
 //DWORD WINAPI AcceptThread(LPVOID arg);
 unsigned __stdcall AcceptThread(void* CompletionPortIO);
 unsigned __stdcall WorkerThread(void* pComPort);
+unsigned __stdcall EchoThread(void* pComPort);
+
+
 
 HANDLE IOCP_WORKER_POOL;
+HANDLE IOCP_ECHO_POOL;
 BOOL g_Shutdown = false;
 
 unordered_map <DWORD, SESSION*> SESSION_MAP;
+queue<DWORD> Echo_Recv_Queue;
+SRWLOCK SESSION_MAP_LOCK;
+SRWLOCK SESSION_LOCK;
+
+
+
 DWORD UNI_KEY = 0;
 //오류 출력 함수
 void init_socket();
@@ -55,11 +68,17 @@ void RecvPost(SESSION* _pSession);
 void SendPost(SESSION* _pSession);
 BOOL SesionRelease(SESSION* _pSession);
 
+void _SendMessage(DWORD _pSESSIONID, CSerealBuffer* CPacket);
+void _EchoSendMessage(DWORD _pSESSIONID);
+void _Disconnect(DWORD _pSESSIONID, CSerealBuffer* CPacket);
+
 
 int main()
 {
 	printf("MainThread START!\n");
 	init_socket();//소켓관련 설정 초기화
+	InitializeSRWLock(&SESSION_MAP_LOCK);
+	InitializeSRWLock(&SESSION_LOCK);
 
 	while (1)
 	{
@@ -122,7 +141,9 @@ unsigned __stdcall AcceptThread(void* pComPort)
 		_Session_User->_SendBuf.ClearBuffer();
 		_Session_User->_RecvBuf.ClearBuffer();
 		_Session_User->_IO_COUNT = 0;
-
+		_Session_User->_SendFlag = false;
+		InitializeSRWLock(&_Session_User->_LOCK);
+		
 		int bufSize = 0;
 		int optionLen = 4;
 
@@ -132,7 +153,9 @@ unsigned __stdcall AcceptThread(void* pComPort)
 		//비동기 입출력 시작
 		DWORD flags = 0;
 
+		AcquireSRWLockExclusive(&SESSION_MAP_LOCK);
 		SESSION_MAP.emplace(_Session_User->_Id, _Session_User);
+		ReleaseSRWLockExclusive(&SESSION_MAP_LOCK);
 
 		WSABUF wsaBuf[2];
 		wsaBuf[0].buf = _Session_User->_RecvBuf.GetFrontBufferPtr();//읽기포인터
@@ -147,14 +170,6 @@ unsigned __stdcall AcceptThread(void* pComPort)
 		CreateIoCompletionPort((HANDLE)_Session_User->_Sock, IOCP_WORKER_POOL, COMKEY, 0);
 
 		RecvPost(_Session_User);
-		//int retVal = WSARecv(_Session_User->_Sock, wsaBuf, 1, &recvbytes, &flags, &_Session_User->_RecvOver, NULL);
-		//if (retVal == SOCKET_ERROR)
-		//{
-		//	if (WSAGetLastError() != WSA_IO_PENDING) {
-		//		printf("WSAGetLastError() %d\n", WSAGetLastError());
-		//	}
-		//	continue;
-		//}
 	}
 	printf("AcceptThread STOP!\n");
 	return 0;
@@ -210,6 +225,7 @@ unsigned __stdcall WorkerThread(void* pComPort)
 		//recv 완료통지 루틴
 		if ((&_pSESSION->_RecvOver) == pOverlapped)//RECV작업진행
 		{
+			AcquireSRWLockExclusive(&_pSESSION->_LOCK);
 			ZeroMemory(buf, 256);
 			ZeroMemory(&_pSESSION->_SendOver, sizeof(_pSESSION->_SendOver));
 			ZeroMemory(&_pSESSION->_RecvOver, sizeof(_pSESSION->_RecvOver));
@@ -230,23 +246,70 @@ unsigned __stdcall WorkerThread(void* pComPort)
 			CPacket.PutData((char*)buf, cbTransferred);//직렬화 버퍼에 데이터를 넣고
 
 			_pSESSION->_SendBuf.Enqueue((char*)CPacket.GetBufferPtr(), CPacket.GetUseSize());//리턴용 센드버퍼세팅후 버퍼값 넣기
-
-			InterlockedDecrement((LONG*)&_pSESSION->_IO_COUNT);
+			//ReleaseSRWLockExclusive(&_pSESSION->_LOCK);
 
 			//WSASEND();
-			SendPost(_pSESSION);
+			//SendPost(_pSESSION);
+			Echo_Recv_Queue.push(_pSESSION->_Id);
+			PostQueuedCompletionStatus(IOCP_ECHO_POOL, 0,0,0);
+
+			ReleaseSRWLockExclusive(&_pSESSION->_LOCK);
+			//_SendMessage(_pSESSION->_Id, &CPacket);
 
 			//WSARECV();
 			RecvPost(_pSESSION);
+			InterlockedDecrement((LONG*)&_pSESSION->_IO_COUNT);
 		}
 		//send완료통지
 		if ((&_pSESSION->_SendOver) == pOverlapped)
 		{
-			_pSESSION->_SendBuf.MoveFront(cbTransferred);//보낸값만큼 버퍼 이동하기 이동하기
+			AcquireSRWLockExclusive(&_pSESSION->_LOCK);
+			_pSESSION->_SendBuf.MoveFront(cbTransferred);//보낸값만큼 버퍼 이동하고
+			InterlockedDecrement((LONG*)&_pSESSION->_SendFlag);//완료통지가 왔다는건 하나의 전송이 끝났다는 뜻이므로 전송플래그를 false로 만든다
+			int Send_Use_Size = _pSESSION->_SendBuf.GetUseSize();//현재 버퍼의 사이즈를 가져온다
+			if (Send_Use_Size > 0)
+			{//보내지지 않은 데이터가 남아있다면?
+				SendPost(_pSESSION);//해당데이터만큼 다시 보낸다.
+			}
+			ReleaseSRWLockExclusive(&_pSESSION->_LOCK);
 			InterlockedDecrement((LONG*)&_pSESSION->_IO_COUNT);//완료통지가 됬다면 통신이 종료됬다는뜻
 		}
 	}
 	printf("WORKER STOP!\n");
+	return 0;
+}
+
+unsigned __stdcall EchoThread(void* pComPort)
+{
+	printf("EchoThread START!\n");
+	while (1)
+	{
+		DWORD cbTransferred;
+		ULONG_PTR CompletionKey;
+		LPOVERLAPPED pOverlapped;
+
+		ZeroMemory(&cbTransferred, sizeof(DWORD));
+		ZeroMemory(&CompletionKey, sizeof(ULONG_PTR));
+		ZeroMemory(&pOverlapped, sizeof(LPOVERLAPPED));
+		//_SendMessage();
+		int retVal = GetQueuedCompletionStatus(IOCP_ECHO_POOL, &cbTransferred, &CompletionKey, &pOverlapped, INFINITE);
+
+		//printf("EchoThread! %d\n", retVal);
+		int E_Q_Size = Echo_Recv_Queue.size();
+		if (E_Q_Size > 0)
+			for (int i=0;i < E_Q_Size;i++)
+			{
+				int ret = Echo_Recv_Queue.front();
+				Echo_Recv_Queue.pop();
+				_EchoSendMessage(ret);
+			}
+		else 
+			continue;
+		
+		
+		
+	}
+	printf("EchoThread STOP!\n");
 	return 0;
 }
 
@@ -261,6 +324,8 @@ void init_socket()
 	//입출력 완료 포트 생성
 	IOCP_WORKER_POOL = CreateIoCompletionPort(INVALID_HANDLE_VALUE, NULL, 0, 0);
 	if (IOCP_WORKER_POOL == NULL) return;
+	IOCP_ECHO_POOL = CreateIoCompletionPort(INVALID_HANDLE_VALUE, NULL, 0, 0);
+	if (IOCP_ECHO_POOL == NULL) return;
 
 	//CPU 개수 확인
 	SYSTEM_INFO si;
@@ -273,6 +338,7 @@ void init_socket()
 	{
 		_CreateThread[i] = (HANDLE)_beginthreadex(NULL, 0, WorkerThread, NULL, 0, NULL);
 	}
+	
 
 	//소켓 생성
 	listen_socket = socket(AF_INET, SOCK_STREAM, 0);
@@ -296,6 +362,7 @@ void init_socket()
 	if (listen(listen_socket, SOMAXCONN) == SOCKET_ERROR) err_quit("listen");
 
 	_CreateThread[Thread_Count] = (HANDLE)_beginthreadex(NULL, 0, AcceptThread, NULL, 0, NULL);
+	_CreateThread[Thread_Count + 1] = (HANDLE)_beginthreadex(NULL, 0, EchoThread, NULL, 0, NULL);
 }
 
 void err_quit(const char* msg) {
@@ -311,6 +378,7 @@ void err_quit(const char* msg) {
 void RecvPost(SESSION* _pSession)
 {
 	if (_pSession == nullptr) return;
+	InterlockedIncrement((LONG*)&_pSession->_IO_COUNT);//바로 리턴된경우에도 통신중이라고 볼수 있으니까 증가시키는게 맞잖아 아닌가?
 	DWORD recvbytes;
 	DWORD flags = 0;
 	WSABUF wsaBuf[2];
@@ -330,23 +398,31 @@ void RecvPost(SESSION* _pSession)
 	int retVal = WSARecv(_pSession->_Sock, wsaBuf, bufcount, &recvbytes, &flags, &_pSession->_RecvOver, NULL);
 	if (retVal == SOCKET_ERROR)
 	{
-		if (WSAGetLastError() == WSA_IO_PENDING) 
+		int retWsa = WSAGetLastError();
+		if (retWsa == WSA_IO_PENDING)
 		{
-			InterlockedIncrement((LONG*)&_pSession->_IO_COUNT);//펜딩걸렸다면 통신중
 			return;
 		}
-		else if (WSAGetLastError() != WSA_IO_PENDING) {
-			printf("WSAGetLastError() %d\n", WSAGetLastError());
-			SesionRelease(_pSession);
+		else if (retWsa != WSA_IO_PENDING) {
+			int ret_IO = InterlockedDecrement((LONG*)&_pSession->_IO_COUNT);
+			printf("WSAGetLastError() %d\n", retWsa);
+			if (ret_IO <= 0)
+			{
+				SesionRelease(_pSession);
+			}
 			return;
 		}
 	}
-	InterlockedIncrement((LONG*)&_pSession->_IO_COUNT);//바로 리턴된경우에도 통신중이라고 볼수 있으니까 증가시키는게 맞잖아 아닌가?
+	
 };
 
 void SendPost(SESSION* _pSession)
 {
+	
 	if (_pSession == nullptr) return;
+	if (_pSession->_SendFlag == true) return;//지금 보내지고 있는상태라면 전송하지 않는다.
+	InterlockedIncrement((LONG*)&_pSession->_SendFlag);//세션플래그 1올려서 보내고 있는상태라는걸 전달
+	InterlockedIncrement((LONG*)&_pSession->_IO_COUNT);//펜딩걸렸다면 통신중
 	DWORD recvbytes;
 	DWORD flags = 0;
 	WSABUF wsaBuf[2];
@@ -367,34 +443,42 @@ void SendPost(SESSION* _pSession)
 	DWORD sendbytes;//데이터 전송
 	int retVal = WSASend(_pSession->_Sock, wsaBuf, bufcount, &sendbytes, 0, &_pSession->_SendOver, NULL);
 	if (retVal == SOCKET_ERROR) {
-		if (WSAGetLastError() == WSA_IO_PENDING)
+		int retWsa = WSAGetLastError();
+		if (retWsa == WSA_IO_PENDING)
 		{
-			InterlockedIncrement((LONG*)&_pSession->_IO_COUNT);//펜딩걸렸다면 통신중
 			return;
 		}
-		else if(WSAGetLastError() != WSA_IO_PENDING) {
-			printf("WSAGetLastError() %d\n", WSAGetLastError());
-			SesionRelease(_pSession);
+		else if(retWsa != WSA_IO_PENDING) {
+			int ret_IO = InterlockedDecrement((LONG*)&_pSession->_IO_COUNT);
+			InterlockedDecrement((LONG*)&_pSession->_SendFlag);//에러로 지금 전송중이 아니라고 전달한다.
+			printf("WSAGetLastError() %d\n", retWsa);
+			if (ret_IO <= 0)
+			{
+				SesionRelease(_pSession);
+			}
 			return;
 		}
 	}
-	InterlockedIncrement((LONG*)&_pSession->_IO_COUNT);//펜딩걸렸다면 통신중
 };
 
 
 BOOL SesionRelease(SESSION* _pSession)
 {
+	AcquireSRWLockShared(&SESSION_MAP_LOCK);
 	auto sMap = SESSION_MAP.find(_pSession->_Id);
-	
-	if (sMap  != SESSION_MAP.end()) 
+	if (sMap  != SESSION_MAP.end())//세션맵에 존재한다면
 	{
 		SESSION_MAP.erase(sMap);//세션맵에서 제거하고
+		ReleaseSRWLockExclusive(&SESSION_MAP_LOCK);//세션락을 해제
 		closesocket(_pSession->_Sock);
 		delete _pSession;
 		return true;
 	}
-	else
+	else 
+	{
+		ReleaseSRWLockShared(&SESSION_MAP_LOCK);
 		return false;//요소를 발견하지 못했다.
+	}
 };
 
 
@@ -420,3 +504,62 @@ BOOL Socket_Error()
 		return false;
 	}
 }
+
+void _SendMessage(DWORD _pSESSIONID, CSerealBuffer* CPacket)
+{
+	AcquireSRWLockShared(&SESSION_MAP_LOCK);//맵이 읽기상태일때
+	auto sMap = SESSION_MAP.find(_pSESSIONID);//맵에서 세션아이디값으로 검색
+	SESSION* _pSession;
+	
+	if (sMap != SESSION_MAP.end())//검색한 값이 존재한다면
+	{
+		_pSession = sMap->second;
+		AcquireSRWLockExclusive(&_pSession->_LOCK);//검색한 값이 존재한다는 뜻이므로 락을건다
+		ReleaseSRWLockShared(&SESSION_MAP_LOCK);//세션맵의 락을 제거한다.
+	}
+	else 
+	{
+		ReleaseSRWLockShared(&SESSION_MAP_LOCK);//세션맵의 락을 제거한다.
+		return;
+	}
+	WCHAR buf[256];
+	int retPacket = CPacket->GetData((char*)buf, CPacket->GetUseSize());//임시버퍼에 데이터를 가져오고
+
+	CSerealBuffer SendPacket;//보낼곳에 데이터를세팅한다
+	SendPacket.PutData((char*)buf, retPacket);
+
+	_pSession->_SendBuf.Enqueue((char*)SendPacket.GetBufferPtr(), SendPacket.GetUseSize());//리턴용 센드버퍼세팅후 버퍼값 넣기
+	ReleaseSRWLockExclusive(&_pSession->_LOCK);//락을 제거한다.
+	SendPost(_pSession);//데이터전송
+
+	return;
+};
+
+void _EchoSendMessage(DWORD _pSESSIONID)
+{
+	AcquireSRWLockShared(&SESSION_MAP_LOCK);//맵이 읽기상태일때
+	auto sMap = SESSION_MAP.find(_pSESSIONID);//맵에서 세션아이디값으로 검색
+	SESSION* _pSession;
+
+	if (sMap != SESSION_MAP.end())//검색한 값이 존재한다면
+	{
+		_pSession = sMap->second;
+		AcquireSRWLockExclusive(&_pSession->_LOCK);//검색한 값이 존재한다는 뜻이므로 락을건다
+		ReleaseSRWLockShared(&SESSION_MAP_LOCK);//세션맵의 락을 제거한다.
+	}
+	else
+	{
+		ReleaseSRWLockShared(&SESSION_MAP_LOCK);//세션맵의 락을 제거한다.
+		return;
+	}
+	ReleaseSRWLockExclusive(&_pSession->_LOCK);//락을 제거한다.
+	SendPost(_pSession);//데이터전송
+
+	return;
+};
+
+void _Disconnect(DWORD _pSESSIONID, CSerealBuffer* CPacket)
+{
+
+	return;
+};
