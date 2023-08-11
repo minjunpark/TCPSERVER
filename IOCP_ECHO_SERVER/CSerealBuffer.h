@@ -129,7 +129,7 @@ public:
 	// Return: (int)복사한 사이즈.
 	//////////////////////////////////////////////////////////////////////////
 	int	GetData(char* chpDest, int iSize);
-
+	int	GetPeek(char* chpDest, int iSize);
 	//////////////////////////////////////////////////////////////////////////
 	// 데이타 삽입.
 	//
@@ -257,6 +257,16 @@ public:
 		return *this;
 	};
 
+	CSerealBuffer& operator << (DWORD64 dValue)
+	{
+		if (_BufferSize - _Rear >= sizeof(DWORD64))
+		{
+			memcpy(_Start + _Rear, &dValue, sizeof(DWORD64));//넣을 크기만큼 복사해서 넣고
+			_Rear += sizeof(DWORD64);//넣은만큼 이동시키기
+			_UseSize += sizeof(DWORD64);
+		}
+		return *this;
+	};
 
 	//////////////////////////////////////////////////////////////////////////
 	// 빼기.	각 변수 타입마다 모두 만듬.
@@ -357,6 +367,17 @@ public:
 			memcpy(&dValue, _Start + _Front, sizeof(double));//뺄만큼 복사해서 뺀다.
 			_Front += sizeof(double);//읽은만큼
 			_UseSize -= sizeof(double);//뺀만큼 사용한 사이즈에서 뺸다.
+		}
+		return *this;
+	};
+	
+	CSerealBuffer& operator >> (DWORD64& iValue)
+	{
+		if (_UseSize >= sizeof(DWORD64))
+		{
+			memcpy(&iValue, _Start + _Front, sizeof(DWORD64));//뺄만큼 복사해서 뺀다.
+			_Front += sizeof(DWORD64);//읽은만큼
+			_UseSize -= sizeof(DWORD64);//뺀만큼 사용한 사이즈에서 뺸다.
 		}
 		return *this;
 	};

@@ -131,10 +131,12 @@
     <ClCompile Include="CRingBuffer.cpp" />
     <ClCompile Include="CSerealBuffer.cpp" />
     <ClCompile Include="main.cpp" />
+    <ClCompile Include="CSRingBuffer.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="CRingBuffer.h" />
     <ClInclude Include="CSerealBuffer.h" />
+    <ClInclude Include="CSRingBuffer.h" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">

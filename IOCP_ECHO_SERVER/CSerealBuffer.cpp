@@ -92,6 +92,21 @@ int	CSerealBuffer::GetData(char* chpDest, int iSize)
 	return iSize;
 };
 
+int	CSerealBuffer::GetPeek(char* chpDest, int iSize)
+{
+	//꺼내오려는 사이즈가 현재 사용중인 사이즈보다 작다면
+	//바이트수가 모자라는것이므로 0을 리턴시켜준다
+	if (_UseSize < iSize)
+		return 0;
+
+	if (iSize <= 0)//음수리턴
+		return 0;
+
+	memcpy(chpDest, _Start + _Front, iSize);//원하는 사이즈 만큼 데이터를 뽑아오고
+
+	return iSize;
+};
+
 int	CSerealBuffer::PutData(char* chpSrc, int iSize)
 {
 	//버퍼 최대크기에서 쓰기버퍼 사이즈를 빼면 사용가능한 사이즈가 나온다.
