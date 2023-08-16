@@ -11,6 +11,7 @@ CRingBuffer::CRingBuffer()//디폴트 버퍼계산 10000바이트를 기본으로한다
 	_Front = 0;
 	_Rear = 0;
 	_Start = new char[_BufferSize];
+	ZeroMemory(_Start, _BufferSize);
 }
 
 
@@ -30,6 +31,7 @@ CRingBuffer::CRingBuffer(int iBufferSize)//들어온 크기만큼 버퍼를 생성 0이하면 �
 	_Front = 0;
 	_Rear = 0;
 	_Start = new char[_BufferSize];
+	ZeroMemory(_Start, _BufferSize);
 }
 
 CRingBuffer::~CRingBuffer()//버퍼 소멸자
@@ -104,15 +106,18 @@ int	CRingBuffer::GetBufferSize(void)
 
 int CRingBuffer::GetUseSize(void)
 {
+	int UseSize = 0;
 	if (_Front <= _Rear)
 	{
-		return _Rear - _Front;
+		UseSize = _Rear - _Front;
+		//return _Rear - _Front;
 	}
 	else
 	{
-		return _BufferSize - _Front + _Rear;
+		UseSize = _BufferSize - _Front + _Rear;
+		//return _BufferSize - _Front + _Rear;
 	}
-
+	return UseSize;
 }
 /////////////////////////////////////////////////////////////////////////
 // 현재 버퍼에 남은 용량 얻기. 
@@ -137,33 +142,53 @@ int CRingBuffer::GetFreeSize(void)
 ////////////////////////////////////////////////////////////////////////
 int CRingBuffer::DirectDequeueSize(void)
 {
+
+	//int Fron = _Front;
+	//int Rear = _Rear;
+	int DriDe = 0;
+	//this->EX_Lock();
 	if (_Front <= _Rear)
+	//if (Fron <= Rear)
 	{
-		return _Rear - _Front;
+		DriDe = _Rear - _Front;
+		//return Rear - Fron;
+		//return _Rear - _Front;
 	}
 	else
 	{
-		return _BufferSize - _Front;
+		DriDe = _BufferSize - _Front;
+		//return _BufferSize - Fron;
+		//return _BufferSize - _Front;
 	}
+	//this->EX_UnLock();
+	return DriDe;
 }
 
 int CRingBuffer::DirectEnqueueSize(void)
 {
+
+	int DriEn = 0;
+	//this->EX_Lock();
 	if (_Rear < _Front)
 	{
-		return (_Front - _Rear) - VOID_VALUE;
+		DriEn = (_Front - _Rear) - VOID_VALUE;
+		//return (_Front - _Rear) - VOID_VALUE;
 	}
 	else
 	{
 		if (_Front < VOID_VALUE)
 		{
-			return (_BufferSize - _Rear) - (VOID_VALUE - _Front);
+			DriEn = (_BufferSize - _Rear) - (VOID_VALUE - _Front);
+			//return (_BufferSize - _Rear) - (VOID_VALUE - _Front);
 		}
 		else
 		{
-			return _BufferSize - _Rear;
+			DriEn =  _BufferSize - _Rear;
+			//return _BufferSize - _Rear;
 		}
 	}
+	//this->EX_UnLock();
+	return DriEn;
 }
 
 /////////////////////////////////////////////////////////////////////////
@@ -175,14 +200,18 @@ int CRingBuffer::DirectEnqueueSize(void)
 int CRingBuffer::Enqueue(char* chpData, int iSize)
 {
 	int iRear;
-
+	//int En_Front= _Front;
+	//int En_Rear= _Rear;
+	//this->EX_Lock();
 	if (GetFreeSize() < iSize)
 	{
+		//this->EX_UnLock();
 		return 0;
 	}
 
 	if (iSize <= 0)//논블로킹 소켓인경우 -1이 오는 경우가 있기 때문에 미리 대비
 	{
+		//this->EX_UnLock();
 		return 0;
 	}
 
@@ -220,7 +249,7 @@ int CRingBuffer::Enqueue(char* chpData, int iSize)
 	//	_Rear = _Rear;
 	//}
 	_Rear = _Rear == _BufferSize ? 0 : _Rear;
-
+	//this->EX_UnLock();
 	return iSize;
 }
 /////////////////////////////////////////////////////////////////////////
@@ -232,15 +261,17 @@ int CRingBuffer::Enqueue(char* chpData, int iSize)
 int CRingBuffer::Dequeue(char* chpDest, int iSize)
 {
 	int iFront;
-
+	//this->EX_Lock();
 	if (GetUseSize() < iSize)//요청한 사이즈가 꺼내올수 있는 크기보다 작다면
 	{
-		//return 0;//요청한 크기가 현재 있는 사이즈보다 크다면 그냥 0을 리턴하고 종료한다.
-		iSize = GetUseSize();//꺼낼수 있는 크기만큼 꺼내주기
+		//this->EX_UnLock();
+		return 0;//요청한 크기가 현재 있는 사이즈보다 크다면 그냥 0을 리턴하고 종료한다.
+		//iSize = GetUseSize();//꺼낼수 있는 크기만큼 꺼내주기
 	}
 
 	if (iSize <= 0)//논블로킹 소켓인경우 -1이 오는 경우가 있기 때문에 미리 대비
 	{
+		//this->EX_UnLock();
 		return 0;
 	}
 
@@ -267,7 +298,7 @@ int CRingBuffer::Dequeue(char* chpDest, int iSize)
 	}
 
 	//_Front = _Front == _BufferSize ? 0 : _Front;
-
+	//this->EX_UnLock();
 	return iSize;
 }
 /////////////////////////////////////////////////////////////////////////
@@ -280,8 +311,7 @@ int	CRingBuffer::Peek(char* chpDest, int iSize)
 {
 	if (GetUseSize() < iSize)
 	{
-		//return 0;//요청한 크기가 현재 있는 사이즈보다 크다면 그냥 0을 리턴하고 종료한다.
-		iSize = GetUseSize();//꺼낼수 있는 크기만큼 꺼내주기
+		return 0;//요청한 크기가 현재 있는 사이즈보다 크다면 그냥 0을 리턴하고 종료한다.
 	}
 
 	int iFront;
@@ -290,7 +320,7 @@ int	CRingBuffer::Peek(char* chpDest, int iSize)
 	{
 		return 0;
 	}
-
+	//this->EX_Lock();
 	if (_Front <= _Rear)
 	{
 		memcpy(chpDest, _Start + _Front, iSize);
@@ -308,7 +338,7 @@ int	CRingBuffer::Peek(char* chpDest, int iSize)
 			memcpy(chpDest + iFront, _Start, iSize - iFront);
 		}
 	}
-
+	//this->EX_UnLock();
 	return iSize;
 
 }
@@ -319,13 +349,13 @@ int	CRingBuffer::Peek(char* chpDest, int iSize)
 // Parameters: 없음.
 // Return: (int)이동크기
 /////////////////////////////////////////////////////////////////////////
-int CRingBuffer::MoveRear(int iSize)
+int CRingBuffer::MoveWrite(int iSize)
 {
 	_Rear = (_Rear + iSize) % _BufferSize;
 	return iSize;//이동된 _Rear포인터 위치를 리턴한다.
 }
 
-int CRingBuffer::MoveFront(int iSize)
+int CRingBuffer::MoveRead(int iSize)
 {
 	_Front = (_Front + iSize) % _BufferSize;//이동한 크기만큼 넣고
 	return iSize;//이동한 _Front포인터 위치를 리턴한다.
@@ -361,7 +391,7 @@ char* CRingBuffer::GetStartBufferPtr(void)
 // Parameters: 없음.
 // Return: (char *) 버퍼 포인터.
 /////////////////////////////////////////////////////////////////////////
-char* CRingBuffer::GetFrontBufferPtr(void)
+char* CRingBuffer::GetReadBufferPtr(void)
 {
 	return _Start + _Front;
 }
@@ -372,7 +402,7 @@ char* CRingBuffer::GetFrontBufferPtr(void)
 // Parameters: 없음.
 // Return: (char *) 버퍼 포인터.
 /////////////////////////////////////////////////////////////////////////
-char* CRingBuffer::GetRearBufferPtr(void)
+char* CRingBuffer::GetWriteBufferPtr(void)
 {
 	return _Start + _Rear;
 }

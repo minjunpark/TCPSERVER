@@ -4,6 +4,19 @@
 #define  __PACKET__
 #include <Windows.h>
 
+struct LanServerHeader
+{
+	unsigned short _Len;
+};
+
+struct NetServerHeader
+{
+	unsigned char _ByteCode;
+	unsigned short _Len;
+	unsigned char _RandomKey;
+	unsigned char _CheckSum;
+};
+
 class CSerealBuffer
 {
 protected:

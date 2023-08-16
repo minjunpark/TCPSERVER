@@ -23,11 +23,11 @@ public:
 	int Peek(char* chpDest, int iSize);//사이즈만큼 버퍼에 복사하기
 
 	//쓰기 읽기포인터 이동시키기
-	int MoveRear(int iSize);//쓰기 포인터를 크기만큼 이동시킨다.
-	int MoveFront(int iSize);//읽기 포인터를 크기만큼 이동시킨다.
+	int MoveWrite(int iSize);//쓰기 포인터를 크기만큼 이동시킨다.
+	int MoveRead(int iSize);//읽기 포인터를 크기만큼 이동시킨다.
 	char* GetStartBufferPtr(void);//읽기포인터를 리턴
-	char* GetFrontBufferPtr(void);//읽기포인터를 리턴
-	char* GetRearBufferPtr(void);//쓰기포인터를 리턴
+	char* GetReadBufferPtr(void);//읽기포인터를 리턴
+	char* GetWriteBufferPtr(void);//쓰기포인터를 리턴
 
 	void ClearBuffer(void);//버퍼를 초기화하기
 	bool Resize(int size);//버퍼의 사이즈를 바꾸는 함수(나중에 고려해볼예정)
