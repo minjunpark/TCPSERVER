@@ -1,37 +1,4 @@
-#pragma once
-#pragma warning(disable:4996)
-#pragma comment(lib, "ws2_32.lib")
-#pragma comment(lib,"winmm.lib")
-#include <cstdio>
-#include <iostream>
-#include <stdlib.h>
-#include <conio.h>
-#include <unordered_map>
-#include <Winsock2.h>
-#include <cstdlib>
-#include <cstdio>
-#include <process.h>
-#include <windows.h>
-#include "CRingBuffer.h"
-//#include "CSRingBuffer.h"
-#include "CSerealBuffer.h"
-
-struct SESSION
-{
-	SOCKET _Sock;
-	DWORD64 _Id;
-	SOCKADDR_IN _Sock_Addr;
-	CRingBuffer _SendBuf;
-	CRingBuffer _RecvBuf;
-	OVERLAPPED _SendOver;
-	OVERLAPPED _RecvOver;
-	alignas(64)
-		SRWLOCK _LOCK;
-	alignas(64)
-		DWORD _IO_Flag;
-	alignas(64)
-		DWORD _IO_COUNT;
-};
+#include "CNetLibrary.h"
 
 unsigned __stdcall _NET_Client_WorkerThread(void* param);
 unsigned __stdcall _NET_Client_AcceptThread(void* param);
@@ -69,24 +36,23 @@ private:
 	virtual bool OnConnectionRequest(WCHAR* ipStr, DWORD ip, USHORT port) = 0;
 	virtual void OnClientJoin(WCHAR* ipStr, DWORD ip, USHORT port, ULONGLONG sessionID) = 0;
 	virtual void OnClientLeave(DWORD64 sessionID) = 0; // Release후 호출
+
+	virtual void OnEnterJoinServer() = 0;// < 서버와의 연결 성공 후
+	virtual void OnLeaveServer() = 0;// < 서버와의 연결이 끊어졌을 때
+
 	virtual void OnRecv(DWORD64 sessionID, CSerealBuffer* CPacket) = 0;
-	//virtual void OnErrorOccured(DWORD errorCode, const WCHAR* error) = 0;
-
-	//virtual void OnTimeOut(ULONGLONG sessionID) = 0;
-	//virtual void OnSend(ULONGLONG sessionID) = 0;
-
-	//virtual void OnSend(SessionID, int sendsize) = 0;           < 패킷 송신 완료 후
-
-
+	virtual void OnSend(DWORD64 sessionID) = 0;
+	virtual void OnError(int errorcode, WCHAR*msg) = 0;
+		
 private:
 	//스레드관리
 	HANDLE _CreateThread[30];//스레드 핸들
 	DWORD Thread_Count;//총스레드 개수
-	DWORD Thread_Running;
-	bool Nagle_Onoff;
+	DWORD Thread_Running;//러닝스레드
+	bool Nagle_Onoff;//네이글알고리즘 실행여부
 	SOCKET listen_socket;
-	SOCKET con_socket;
-	DWORD PORT;
+	SOCKET con_socket;//연결된소켓
+	DWORD PORT;//포트번호
 
 	//종료를위한 함수
 	BOOL g_Shutdown = false;

@@ -31,6 +31,7 @@ private:
 	int m_iUseCount;//사용중인 사이즈
 	bool m_iPlacementNew;// Alloc 시 생성자 / Free 시 파괴자 호출 여부
 	int m_iBufferPointer;//생성될때마다 세팅되는 고유값
+	SRWLOCK CMemory_Lock;
 
 	struct Node
 	{
@@ -53,10 +54,12 @@ public:
 	//////////////////////////////////////////////////////////////////////////
 	CMemoryPool(int iBlockNum, bool bPlacementNew = false)
 	{
+		InitializeSRWLock(&CMemory_Lock);//멀티스레드 동기화문제 처리를위한 락
 		m_iCapacity = 0;//전체 총개수
 		m_iUseCount = 0;//사용 중인 개수
 		m_iPlacementNew = bPlacementNew;//Alloc 시 생성자 / Free 시 파괴자 호출 여부
 		m_iBufferPointer = (int)this;//생성될때 세팅되는 this포인터를 고유값으로 한다.
+		
 
 		if (iBlockNum == 0)//0이라면 더 진행할 이유가 없음
 			return;
@@ -102,6 +105,7 @@ public:
 	//////////////////////////////////////////////////////////////////////////
 	DATA* Alloc(void)
 	{
+		AcquireSRWLockExclusive(&CMemory_Lock);
 		if ((m_iCapacity - m_iUseCount) > 0)//사용할수 있는 메모리 오브젝트가 있다면
 		{
 			Node* OldNode = _FreeNode;
@@ -115,7 +119,7 @@ public:
 			_FreeNode = OldNode->next;//스택에서 노드 제거
 
 			m_iUseCount++;//총사용량을 올려준다.
-
+			ReleaseSRWLockExclusive(&CMemory_Lock);
 			return Data;//할당된 메모리를 리턴해준다.
 		}
 		else//사용 할 수 있는 메모리 오브젝트가 없다면 만들어서 리턴해준다.
@@ -134,7 +138,7 @@ public:
 
 			m_iUseCount++;//사용량 올려주고
 			m_iCapacity++;//노드 총 개수를 증가시켜준다.
-
+			ReleaseSRWLockExclusive(&CMemory_Lock);
 			return Data;
 		}
 	};
@@ -155,7 +159,8 @@ public:
 		//같은 포인터 변수 중복 입력으로인한 실수방지
 		if ((&_FreeNode->data) == pData)
 			return false;
-
+		AcquireSRWLockExclusive(&CMemory_Lock);
+		bool Free_On = false;
 		if (m_iUseCount > 0)//현재 사용중인 값이 있다면
 		{
 			//Alloc시 준값은 Node 가아니라 Node안의 data부분이므로 Node가장위부터 data까지를 계산한다.
@@ -163,7 +168,10 @@ public:
 			Node* ReData = (Node*)((char*)pData - offsetof(Node, data));
 
 			if (ReData->OVER_GUARD != m_iBufferPointer || ReData->UNDER_GUARD != m_iBufferPointer)
-				return false;//다른 오브젝트의 포인터가 들어왔거나 데이터가 오염됬다는 뜻이다.
+			{
+				Free_On = false;
+				//return false;//다른 오브젝트의 포인터가 들어왔거나 데이터가 오염됬다는 뜻이다.
+			}
 			//로그 남기거나 exception 일으키기가 필요한데 우선 false만 처리한다.
 
 			if (m_iPlacementNew == true)//소멸자를 호출해야하는 상황이라면
@@ -173,10 +181,11 @@ public:
 			_FreeNode = ReData;//스택에 다시 쌓는다.
 
 			m_iUseCount--;//사용중인 카운터를 줄인다.
-			return true;
+			Free_On = true;
+			//return true;
 		}
-
-		return false;//현재 사용중 카운터가 없는 상황인데 들어온 경우 이므로 false를 리턴한다.
+		ReleaseSRWLockExclusive(&CMemory_Lock);
+		return Free_On;//현재 사용중 카운터가 없는 상황인데 들어온 경우 이므로 false를 리턴한다.
 	};
 
 	void print()
@@ -186,6 +195,12 @@ public:
 		printf("m_iPlacementNew %d\n", m_iPlacementNew);
 	};
 
+	//////////////////////////////////////////////////////////////////////////
+	// 생성자 말고 직접 메모리풀을 Set하기
+	//
+	// Parameters: 없음.
+	// Return: (int) 메모리 풀 내부 전체 개수
+	//////////////////////////////////////////////////////////////////////////
 	void SetPool(int iBlockNum, bool bPlacementNew = false)
 	{
 		m_iCapacity = 0;//전체 총개수

@@ -2,25 +2,29 @@
 
 int main()
 {
-    unsigned short serverPort = 6000;
-    int backlogQueueSize = SOMAXCONN;
-    SYSTEM_INFO info;
-    GetSystemInfo(&info);
-    int threadPoolSize = info.dwNumberOfProcessors * 2;
-    int runningThread = info.dwNumberOfProcessors;
-    threadPoolSize = 12;
-    runningThread = 8;
-    //printf("ThreadPool Size : ");
-    //scanf_s("%d", &threadPoolSize);
-    //printf("Num of Running Thread : ");
-    //scanf_s("%d", &runningThread);
-    //IOCP_ECHO_SERVER server(serverPort, SOMAXCONN, threadPoolSize, runningThread, false, 10000);Z
-    IOCP_ECHO_SERVER server(0, serverPort, threadPoolSize, runningThread, false, 5000);
+	unsigned short serverPort = 6000;
+	int backlogQueueSize = SOMAXCONN;
+	SYSTEM_INFO info;
+	GetSystemInfo(&info);
+	int threadPoolSize = info.dwNumberOfProcessors * 2;
+	int runningThread = info.dwNumberOfProcessors;
+	threadPoolSize = 12;
+	runningThread = 8;
+	//printf("ThreadPool Size : ");
+	//scanf_s("%d", &threadPoolSize);
+	//printf("Num of Running Thread : ");
+	//scanf_s("%d", &runningThread);
+	//IOCP_ECHO_SERVER server(serverPort, SOMAXCONN, threadPoolSize, runningThread, false, 10000);Z
+	IOCP_ECHO_SERVER server(0, serverPort, threadPoolSize, runningThread, false, 5000, 200);
 	while (1)
 	{
 		server.All_Moniter();
 
-		//int key = _getch();
+		int key = _getch();
+		if (key == 'w')
+		{
+			ProfileDataOutText(L"ABC");
+		}
 		//if (key == 's')
 		//{
 		//	printf("process Stop START\n");
@@ -39,7 +43,7 @@ int main()
 	//윈속 종료
 	WSACleanup();
 	printf("MainThread STOP!\n");
-    
+
 
 	return 0;
 }

@@ -137,6 +137,7 @@
     <ClCompile Include="IOCP_MAIN.cpp" />
     <ClCompile Include="main.cpp" />
     <ClCompile Include="CSRingBuffer.cpp" />
+    <ClCompile Include="Profile.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="CDump.h" />
@@ -144,13 +145,14 @@
     <ClInclude Include="CLanServer.h" />
     <ClInclude Include="CLOG.h" />
     <ClInclude Include="CMemoryPool.h" />
-    <ClInclude Include="CoreLibrary.h" />
+    <ClInclude Include="CNetLibrary.h" />
     <ClInclude Include="CRingBuffer.h" />
     <ClInclude Include="CSerealBuffer.h" />
     <ClInclude Include="CSRingBuffer.h" />
     <ClInclude Include="IOCP_ECHO_SERVER.h" />
     <ClInclude Include="NetErrorCode.h" />
-    <ClInclude Include="Session.h" />
+    <ClInclude Include="Profile.h" />
+    <ClInclude Include="CSession.h" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">

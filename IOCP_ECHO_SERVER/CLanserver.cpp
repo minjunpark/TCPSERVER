@@ -1,22 +1,6 @@
 #include "CLanServer.h"
 
-//unsigned int AcceptThread(void* param)
-//{
-//	////AcceptThread -> NetCore::Run 이 호출될때까지 막혀있다가 NetCore::Run이 호출되어야 시작
-//	//CLanServer* core = (CLanServer*)param;
-//	//WaitForSingleObject(core->_RunningEvent, INFINITE);
-//	//return core->CLanServerAcceptThread(param);
-//	return 0;
-//}
-//
-//unsigned int WorkerThread(void* param)
-//{
-//	////AcceptThread -> NetCore::Run 이 호출될때까지 막혀있다가 NetCore::Run이 호출되어야 시작
-//	//CLanServer* core = (CLanServer*)param;
-//	//WaitForSingleObject(core->_RunningEvent, INFINITE);
-//	//return core->CLanServerAcceptThread(param);
-//	return 0;
-//}
+CDump CLanDump();
 
 unsigned __stdcall _NET_WorkerThread(void* param)
 {
@@ -36,7 +20,6 @@ unsigned __stdcall _NET_AcceptThread(void* param)
 	return server->CLanAcceptThread(param);
 }
 
-
 CLanServer::CLanServer() : _SESSION_POOL(0, false), _PACKET_POOL(0, false)
 {
 	//CMemoryPool<st_SESSION*> _SESSSION_POOL(10000, false);
@@ -45,33 +28,41 @@ CLanServer::CLanServer() : _SESSION_POOL(0, false), _PACKET_POOL(0, false)
 
 CLanServer::~CLanServer()
 {
-	
+	//어차피 종료되면 메인까지 날아가는데
+	//메모리정리를 할필요가 없지 다른곳에 신경쓰는게 정신건강에 좋다.
 };
 
-bool  CLanServer::Start(DWORD64 CIP, DWORD CPORT, DWORD CThraed_Count, DWORD CThread_Running, bool CNagle_Onoff, DWORD CMax_Session_Count)
+bool  CLanServer::Start(DWORD64 CIP, DWORD CPORT, DWORD CThraed_Count, DWORD CThread_Running, bool CNagle_Onoff, DWORD CMax_Session_Count, DWORD backlogSize)
 {
-	
 	timeBeginPeriod(1);
+	InitProfile();//프로파일 사용을 위한 초기화
 	InitializeSRWLock(&SESSION_MAP_LOCK);
-	InitializeSRWLock(&SESSION_POOL_LOCK);
-	InitializeSRWLock(&PACKET_LOCK);
+
+	this->SNDBUF_ZERO_OnOff = false;//송신버퍼 크기를 제로로만들건지 안만들건지
 	this->PORT = CPORT;
 	this->_Start_Time = _Cur_Time = timeGetTime();
-	this->Thread_Count = CThraed_Count;
+	this->IOCP_Thread_Count = CThraed_Count;
 	this->Thread_Running = CThread_Running;
 	this->Nagle_Onoff = CNagle_Onoff;
 	this->MAX_SESSION_COUNT = CMax_Session_Count;//최대 유저 숫자
+	if (backlogSize <= 200)
+		this->BACK_LOG_SIZE = 200;
+	else
+		this->BACK_LOG_SIZE = backlogSize;
+
+	this->_SESSION_POOL.SetPool(MAX_SESSION_COUNT / 2, false);
+	this->_PACKET_POOL.SetPool(1000, false);
+
 	//this->init_Set();//게임기본세팅
 	this->init_socket();//소켓세팅
 	//printf("_SESSSION_POOL.GetCapacityCount() %d\n", _SESSSION_POOL.GetCapacityCount());
-	_SESSION_POOL.SetPool(MAX_SESSION_COUNT / 2, false);
-	_PACKET_POOL.SetPool(1000,false);
+
 	//printf("_SESSSION_POOL.GetCapacityCount() %d\n", _SESSSION_POOL.GetCapacityCount());
 	//_SESSSION_POOL = &CMemoryPool<st_SESSION>(MAX_SESSION_COUNT, false);
 	//_SessionPool(CMax_Session_Count,false);
 
 	//스레드 생성처리
-	
+
 	//오브젝트풀 생성
 
 	//스레드 모두 시작
@@ -83,15 +74,35 @@ void  CLanServer::Stop()
 {
 	//데이터 DB 저장
 
+	g_Shutdown = true;//모든 스레드 정지를위한값
+
 	//우선 listensocket 닫고
-	
-	//Accpet스레드 정지
+	closesocket(listen_socket);
+
+	//모든소켓 연결 강제종료
+	AcquireSRWLockExclusive(&SESSION_MAP_LOCK);
+	for (auto Iter = SESSION_MAP.begin(); Iter != SESSION_MAP.end(); ++Iter)
+	{
+		closesocket(Iter->second->_Sock);//모든소켓 싸그리종료
+		//어차피 서버종료하니까 세션 일부러 남겨둔다.
+		//마지막 유저상태 저장을 위해서
+	}
+	//SESSION_MAP.clear();//메모리 굳이 정리안할거임 소켓만 싹정리해서 정지상태로 만든다.
+	ReleaseSRWLockExclusive(&SESSION_MAP_LOCK);
+
+	//Accpet스레드 정지확인
 
 	//워커스레드정리
+	for (int i = 0; i < IOCP_Thread_Count; i++)
+	{
+		PostQueuedCompletionStatus(IOCP_WORKER_POOL, 0, 0, 0);///포스트갑을 보내 정리
+	}
 
 	//모니터링 스레드정리
 
 	//메인스레드정지
+
+	//마지막 신호를 메인스레드에 전송한다.
 };
 
 unsigned int CLanServer::CLanAcceptThread(void* pComPort)
@@ -102,15 +113,35 @@ unsigned int CLanServer::CLanAcceptThread(void* pComPort)
 	SOCKADDR_IN clientaddr;
 	int addrlen = sizeof(clientaddr);
 	DWORD recvbytes;
+	WCHAR msg[100];
 
 	while (true) {
 		//accept()
 		clientsock = accept(this->listen_socket, (SOCKADDR*)&clientaddr, &addrlen);
-		
-		//this->OnConnectionRequest();
+		if (MAX_SESSION_COUNT <= SESSION_MAP.size())//유저수가 최대접속수보다 많다면접속불가
+		{
+			closesocket(clientsock);
+			ZeroMemory(msg, sizeof(msg));
+			wcscpy(msg, L"유저수 초과오류 발생");
+			this->OnError(1001, msg);
+			continue;
+		}
 
-		if (clientsock == INVALID_SOCKET) {
-			printf("accept()");
+		//들어온 아이피 포트가 문제된다면?
+		if (!this->OnConnectionRequest(msg, 127, clientaddr.sin_port))
+		{
+			closesocket(clientsock);
+			ZeroMemory(msg, sizeof(msg));
+			wcscpy(msg, L"OnConnectionRequest false");//아이피차단대상
+			this->OnError(1001, msg);
+			continue;
+		}
+
+		if (clientsock == INVALID_SOCKET) //소켓자체가 에러발생 접속불가상태모든걸 종료해야한다.
+		{
+			//printf("accept()");
+			wcscpy(msg, L"clientsock == INVALID_SOCKET WORKER스레드 종료");
+			this->OnError(1001, msg);
 			break;
 		}
 
@@ -121,9 +152,9 @@ unsigned int CLanServer::CLanAcceptThread(void* pComPort)
 
 		//세션생성
 		//st_SESSION* _Session_User = new st_SESSION;
-		AcquireSRWLockExclusive(&SESSION_POOL_LOCK);
+
 		st_SESSION* _Session_User = _SESSION_POOL.Alloc();
-		ReleaseSRWLockExclusive(&SESSION_POOL_LOCK);
+
 		if (_Session_User == NULL)
 			break;
 
@@ -152,7 +183,7 @@ unsigned int CLanServer::CLanAcceptThread(void* pComPort)
 
 		this->RecvPost(_Session_User);
 		InterlockedIncrement64((LONG64*)&_AcceptCount);
-		//this->OnClientJoin();Accept후 접속완료호출
+		this->OnClientJoin(msg, 127, clientaddr.sin_port, _Session_User->_Id);//Accept후 접속완료호출
 	}
 	printf("AcceptThread STOP!\n");
 	return 0;
@@ -172,6 +203,8 @@ unsigned int CLanServer::CLanWorkerThread(void* pComPort)
 	LPOVERLAPPED pOverlapped;
 
 	DWORD thisThreadID = GetCurrentThreadId();
+
+	WCHAR error_msg[100];
 
 	while (true)
 	{
@@ -205,6 +238,9 @@ unsigned int CLanServer::CLanWorkerThread(void* pComPort)
 			//	//err_quit("WSAGetOverlappedResult()");
 			//}
 			//int ret_IO = InterlockedDecrement(&_pSession->_IO_COUNT);
+			ZeroMemory(error_msg, sizeof(error_msg));
+			wcscpy(error_msg, L"retVal == 0 || cbTransferred == 0 전송량 오류 소켓강제 정지");
+			this->OnError(1001, error_msg);
 			if ((InterlockedDecrement(&_pSession->_IO_COUNT)) == 0)
 			{
 				SOCKADDR_IN clientaddr;
@@ -220,16 +256,18 @@ unsigned int CLanServer::CLanWorkerThread(void* pComPort)
 		//recv 완료통지 루틴
 		if ((&_pSession->_RecvOver) == pOverlapped)//RECV작업진행
 		{
+			PRO_BEGIN(L"_pSession->_RecvOver");
 			//InterlockedAdd64((LONG64*)&ALL_BYTE, cbTransferred);
 			InterlockedIncrement64((LONG64*)&_RecvCount);
-			
+
 			int retMRear = _pSession->_RecvBuf.MoveWrite(cbTransferred);//받은만큼 쓰기포인터 이동
-			AcquireSRWLockExclusive(&PACKET_LOCK);
-			CSerealBuffer *CPacket = _PACKET_POOL.Alloc();//직렬화 버퍼 가져오기
-			ReleaseSRWLockExclusive(&PACKET_LOCK);
+
+			CSerealBuffer* CPacket = _PACKET_POOL.Alloc();//직렬화 버퍼 가져오기
+
 
 			while (true) //받은 패킷모두 센드용 링버퍼에 넣는다.
 			{
+
 				//AcquireSRWLockExclusive(&_pSession->_LOCK);
 				CPacket->Clear();
 				//CPacket.Clear();
@@ -251,31 +289,34 @@ unsigned int CLanServer::CLanWorkerThread(void* pComPort)
 
 				int retSwitchDeq = _pSession->_RecvBuf.Peek(CPacket->GetBufferPtr(), st_recv_header._Len);
 
-				if (retSwitchDeq!= st_recv_header._Len)
+				if (retSwitchDeq != st_recv_header._Len)
 				{
 					//강제종료
 				}
 				_pSession->_RecvBuf.MoveRead(retSwitchDeq);
 
 				int retCS = CPacket->MoveWritePos(retSwitchDeq);//데이터를 받은만큼 직렬화 버퍼를 이동시킨다.
-				
+
 				//8바이트 데이터 OnMessage 호출
 				this->OnRecv(_pSession->_Id, CPacket);//센드버퍼에 데이터쌓기
 			}
 			CPacket->Clear();
-			AcquireSRWLockExclusive(&PACKET_LOCK);
 			_PACKET_POOL.Free(CPacket);
-			ReleaseSRWLockExclusive(&PACKET_LOCK);
+
 
 			//WSASEND();
+			
 			this->SendPost(_pSession);
+
 
 			//WSARECV();
 			this->RecvPost(_pSession);
+			PRO_END(L"_pSession->_RecvOver");
 		}
 		//send완료통지
 		if ((&_pSession->_SendOver) == pOverlapped)
 		{
+			PRO_BEGIN(L"_pSession->_SendOver");
 			//printf("Send THread%d\n,", thisThreadID);
 			InterlockedIncrement64((LONG64*)&_SendCount);
 			_pSession->_SendBuf.MoveRead(cbTransferred);//보낸값만큼 읽기버퍼 이동
@@ -284,6 +325,7 @@ unsigned int CLanServer::CLanWorkerThread(void* pComPort)
 			InterlockedExchange(&_pSession->_IO_Flag, false);//완료통지가 왔다는건 하나의 전송이 끝났다는 뜻이므로 전송플래그를 false로 만든다
 			if (_pSession->_SendBuf.GetUseSize() > 0)//보내지지 않은 데이터가 남아있다면?
 				this->SendPost(_pSession);//그만큼 다시 전송
+			PRO_END(L"_pSession->_SendOver");
 		}
 		this->OnWorkerThreadEnd();//1루프종료
 	}
@@ -294,6 +336,7 @@ unsigned int CLanServer::CLanWorkerThread(void* pComPort)
 void CLanServer::init_socket()
 {
 	WSADATA wsaData;
+	WCHAR error_msg[100];
 
 	//윈속 초기화
 	if (WSAStartup(MAKEWORD(2, 2), &wsaData) != 0)
@@ -316,13 +359,21 @@ void CLanServer::init_socket()
 	setsockopt(listen_socket, SOL_SOCKET, SO_LINGER, (char*)&linger, sizeof(linger));
 
 	if (listen_socket == INVALID_SOCKET)
+	{
+		ZeroMemory(error_msg, sizeof(error_msg));
+		wcscpy(error_msg, L"listen_socket == INVALID_SOCKET");
+		this->OnError(1001, error_msg);
 		printf("socket");
+	}
+
 	bool enable = true;
 	setsockopt(listen_socket, SOL_SOCKET, SO_KEEPALIVE, (char*)&enable, sizeof(enable));
 
-	int optval = 0;
-	int optlen = sizeof(optval);
-	setsockopt(listen_socket, SOL_SOCKET, SO_RCVBUF, (char*)&optval, sizeof(optlen));
+	if (SNDBUF_ZERO_OnOff) {
+		int optval = 0;
+		int optlen = sizeof(optval);
+		setsockopt(listen_socket, SOL_SOCKET, SO_RCVBUF, (char*)&optval, sizeof(optlen));
+	}
 
 	int option = Nagle_Onoff;               //네이글 알고리즘 on/off
 	setsockopt(listen_socket,             //해당 소켓
@@ -337,15 +388,27 @@ void CLanServer::init_socket()
 	sock_addr.sin_port = htons(PORT);
 	sock_addr.sin_addr.S_un.S_addr = htonl(INADDR_ANY);
 
-	if (bind(listen_socket, (struct sockaddr*)&sock_addr, sizeof(struct sockaddr_in)) == SOCKET_ERROR) printf("Bind");
-	if (listen(listen_socket, SOMAXCONN) == SOCKET_ERROR) printf("listen");
+	if (bind(listen_socket, (struct sockaddr*)&sock_addr, sizeof(struct sockaddr_in)) == SOCKET_ERROR)
+	{
+		ZeroMemory(error_msg, sizeof(error_msg));
+		wcscpy(error_msg, L"bind(listen_socket");
+		this->OnError(1001, error_msg);
+		printf("Bind");
+	}
+	if (listen(listen_socket, BACK_LOG_SIZE) == SOCKET_ERROR)
+	{
+		ZeroMemory(error_msg, sizeof(error_msg));
+		wcscpy(error_msg, L"listen(listen_socket, BACK_LOG_SIZE) == SOCKET_ERROR");
+		this->OnError(1001, error_msg);
+		printf("listen");
+	}
 
-	for (int i = 0; i < Thread_Count; i++)
+	for (int i = 0; i < IOCP_Thread_Count; i++)
 	{
 		_CreateThread[i] = (HANDLE)_beginthreadex(nullptr, 0, _NET_WorkerThread, this, 0, nullptr);
 	}
 
-	this->_CreateThread[Thread_Count] = (HANDLE)_beginthreadex(nullptr, 0, _NET_AcceptThread, this, 0, nullptr);
+	_AcceptThread = (HANDLE)_beginthreadex(nullptr, 0, _NET_AcceptThread, this, 0, nullptr);
 
 }
 
@@ -353,6 +416,7 @@ void CLanServer::RecvPost(st_SESSION* _pSession)
 {
 	DWORD flags = 0;
 	WSABUF wsaBuf[2];
+	WCHAR error_msg[100];
 
 	ZeroMemory(&_pSession->_RecvOver, sizeof(OVERLAPPED));
 	wsaBuf[0].buf = _pSession->_RecvBuf.GetWriteBufferPtr();
@@ -374,6 +438,9 @@ void CLanServer::RecvPost(st_SESSION* _pSession)
 		else if (retWsa != WSA_IO_PENDING) {
 			//int ret_IO = InterlockedDecrement(&_pSession->_IO_COUNT);
 			printf("Recv WSAGetLastError() %d\n", retWsa);
+			ZeroMemory(error_msg, sizeof(error_msg));
+			wcscpy(error_msg, L"Recv WSAGetLastError()");
+			this->OnError(1001, error_msg);
 			if ((InterlockedDecrement(&_pSession->_IO_COUNT)) == 0)
 			{
 				this->SesionRelease(_pSession);
@@ -401,6 +468,7 @@ void CLanServer::SendPost(st_SESSION* _pSession)
 	DWORD recvbytes;
 	DWORD flags = 0;
 	WSABUF wsaBuf[2];
+	WCHAR error_msg[100];
 
 	ZeroMemory(&_pSession->_SendOver, sizeof(OVERLAPPED));
 
@@ -412,13 +480,14 @@ void CLanServer::SendPost(st_SESSION* _pSession)
 	wsaBuf[0].len = DriDe;
 	wsaBuf[1].buf = _pSession->_SendBuf.GetStartBufferPtr();
 	wsaBuf[1].len = DriUse - DriDe;
-	
+
 	if (wsaBuf[1].len > _pSession->_SendBuf.GetBufferSize())
 		wsaBuf[1].len = 0;
 
 	//WSASEND();
 	DWORD sendbytes;//데이터 전송
 	InterlockedIncrement(&_pSession->_IO_COUNT);//바로 리턴된경우에도 통신중이라고 볼수 있으니까 증가시키는게 맞잖아 아닌가?
+
 	int retVal = WSASend(_pSession->_Sock, wsaBuf, 2, nullptr, 0, &_pSession->_SendOver, nullptr);
 	if (retVal == SOCKET_ERROR)
 	{
@@ -431,6 +500,9 @@ void CLanServer::SendPost(st_SESSION* _pSession)
 		{
 			//int ret_IO = InterlockedDecrement(&_pSession->_IO_COUNT);
 			printf("Send WSAGetLastError() %d\n", retWsa);
+			ZeroMemory(error_msg, sizeof(error_msg));
+			wcscpy(error_msg, L"Send WSAGetLastError()");
+			this->OnError(1001, error_msg);
 			if ((InterlockedDecrement(&_pSession->_IO_COUNT)) == 0)
 			{
 				this->SesionRelease(_pSession);
@@ -450,14 +522,11 @@ bool CLanServer::SesionRelease(st_SESSION* _pSession)
 		SESSION_MAP.erase(sMap);//세션맵에서 제거하고
 		ReleaseSRWLockExclusive(&SESSION_MAP_LOCK);//세션락을 해제
 		AcquireSRWLockExclusive(&_pSession->_LOCK);//동기화문제를위해 세션자체의 록을잡고
+		closesocket(_pSession->_Sock);
 		SessionReset(_pSession);//세션초기화
 		ReleaseSRWLockExclusive(&_pSession->_LOCK);
-
-		AcquireSRWLockExclusive(&SESSION_POOL_LOCK);
 		_SESSION_POOL.Free(_pSession);
-		ReleaseSRWLockExclusive(&SESSION_POOL_LOCK);
-
-		//delete _pSession;
+		
 		this->OnClientLeave(Session_id);
 		return true;
 	}
@@ -470,7 +539,6 @@ bool CLanServer::SesionRelease(st_SESSION* _pSession)
 
 bool CLanServer::SessionReset(st_SESSION* _pSession)
 {
-	closesocket(_pSession->_Sock);
 	ZeroMemory(&_pSession->_SendOver, sizeof(_pSession->_SendOver));
 	ZeroMemory(&_pSession->_RecvOver, sizeof(_pSession->_RecvOver));
 	_pSession->_Id = 0;
@@ -518,9 +586,9 @@ void CLanServer::SendPacket(DWORD64 _pSESSIONID, CSerealBuffer* CPacket)
 	//LAN WAN구별해서 헤더세팅
 	LanServerHeader st_header;
 	st_header._Len = CPacketSize;//패킷의 최대길이
-	AcquireSRWLockExclusive(&PACKET_LOCK);
-	CSerealBuffer *SendPacket = _PACKET_POOL.Alloc();//보낼곳에 데이터를세팅한다
-	ReleaseSRWLockExclusive(&PACKET_LOCK);
+
+	CSerealBuffer* SendPacket = _PACKET_POOL.Alloc();//보낼곳에 데이터를세팅한다
+
 	SendPacket->Clear();
 	SendPacket->PutData((char*)&st_header, sizeof(LanServerHeader));//헤더를 넣고
 	SendPacket->PutData(CPacket->GetBufferPtr(), CPacketSize);//패킷에서 데이터를 바로 뽑아서 넣는다.
@@ -546,9 +614,8 @@ void CLanServer::SendPacket(DWORD64 _pSESSIONID, CSerealBuffer* CPacket)
 		ReleaseSRWLockExclusive(&SESSION_MAP_LOCK);//세션맵의 락을 제거한다.
 	}
 	SendPacket->Clear();
-	AcquireSRWLockExclusive(&PACKET_LOCK);
 	_PACKET_POOL.Free(SendPacket);
-	ReleaseSRWLockExclusive(&PACKET_LOCK);
+
 };
 
 
@@ -608,8 +675,7 @@ bool CLanServer::Disconnect(DWORD64 SessionID)
 	if (sMap != SESSION_MAP.end())//세션맵에 존재한다면
 	{
 		ReleaseSRWLockExclusive(&SESSION_MAP_LOCK);//세션락을 해제
-		SesionRelease(sMap->second);
-		return true;
+		return SesionRelease(sMap->second);
 	}
 	else
 	{
@@ -623,11 +689,11 @@ int CLanServer::getAcceptTPS()
 	//DWORD64 _R_Cur_Time = timeGetTime();
 	//if (1000 < (_R_Cur_Time - _Cur_Time))//1초가 지났다면 
 	//{
-		DWORD64 _A_AcceptCount = _AcceptCount;
-		printf("Accept Count 1 sec :  %lld\n", _A_AcceptCount);
-		_InlineInterlockedAdd64((LONG64*)&_ALL_AcceptCount, _A_AcceptCount);
-		InterlockedExchange64((LONG64*)&_AcceptCount, 0);
-		return _A_AcceptCount;
+	DWORD64 _A_AcceptCount = _AcceptCount;
+	printf("Accept Count 1 sec :  %lld\n", _A_AcceptCount);
+	_InlineInterlockedAdd64((LONG64*)&_ALL_AcceptCount, _A_AcceptCount);
+	InterlockedExchange64((LONG64*)&_AcceptCount, 0);
+	return _A_AcceptCount;
 	//}
 	//else
 	//	return _SendCount;
@@ -639,11 +705,11 @@ int CLanServer::getRecvMessageTPS()
 	//if (1000 < (_R_Cur_Time - _Cur_Time))//1초가 지났다면 
 	//{
 	//	_Cur_Time = _R_Cur_Time;
-		DWORD64 _R_RecvCount = _RecvCount;
-		printf("Recv Count 1 sec : %lld\n", _R_RecvCount);
-		_InlineInterlockedAdd64((LONG64*)&_ALL_RecvCount, _R_RecvCount);
-		InterlockedExchange64((LONG64*)&_RecvCount, 0);
-		return _R_RecvCount;
+	DWORD64 _R_RecvCount = _RecvCount;
+	printf("Recv Count 1 sec : %lld\n", _R_RecvCount);
+	_InlineInterlockedAdd64((LONG64*)&_ALL_RecvCount, _R_RecvCount);
+	InterlockedExchange64((LONG64*)&_RecvCount, 0);
+	return _R_RecvCount;
 	//}
 	//else
 	//	return _RecvCount;
@@ -655,11 +721,11 @@ int CLanServer::getSendMessageTPS()
 	//if (1000 < (_R_Cur_Time - _Cur_Time))//1초가 지났다면 
 	//{
 	//	_Cur_Time = _R_Cur_Time;
-		DWORD64 _S_SendCount = _SendCount;
-		printf("Send Count 1 sec : %lld\n", _S_SendCount);
-		_InlineInterlockedAdd64((LONG64*)&_ALL_SendCount, _S_SendCount);
-		InterlockedExchange64((LONG64*)&_SendCount, 0);
-		return _S_SendCount;
+	DWORD64 _S_SendCount = _SendCount;
+	printf("Send Count 1 sec : %lld\n", _S_SendCount);
+	_InlineInterlockedAdd64((LONG64*)&_ALL_SendCount, _S_SendCount);
+	InterlockedExchange64((LONG64*)&_SendCount, 0);
+	return _S_SendCount;
 	//}
 	//else
 	//	return _SendCount;

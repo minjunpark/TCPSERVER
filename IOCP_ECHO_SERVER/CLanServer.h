@@ -1,20 +1,4 @@
-#pragma once
-#pragma warning(disable:4996)
-#pragma comment(lib, "ws2_32.lib")
-#pragma comment(lib,"winmm.lib")
-#include <cstdio>
-#include <iostream>
-#include <stdlib.h>
-#include <conio.h>
-#include <unordered_map>
-#include <Winsock2.h>
-#include <cstdlib>
-#include <cstdio>
-#include <process.h>
-#include <windows.h>
-#include "CRingBuffer.h"
-#include "CSerealBuffer.h"
-#include "CMemoryPool.h"
+#include "CNetLibrary.h"
 
 struct st_SESSION
 {
@@ -41,11 +25,13 @@ public:
 	CLanServer();
 	~CLanServer();
 
-	bool Start(DWORD64 CIP, DWORD CPORT, DWORD CThraed_Count, DWORD CThread_Running, bool CNagle_Onoff, DWORD CMax_Session_Count);//시작
+	bool Start(DWORD64 CIP, DWORD CPORT, DWORD CThraed_Count, 
+		DWORD CThread_Running, bool CNagle_Onoff, DWORD CMax_Session_Count,
+	DWORD backlogSize);//시작
 	// 오픈 IP / 포트 / 워커스레드 수(생성수, 러닝수) / 나글옵션 / 최대접속자 수
 	void Stop();//서버종료
 
-	int GetSessionCount() { return _Session_Count; }//현제 세션유저수
+	int GetSessionCount() { return SESSION_MAP.size(); }//현제 세션유저수
 
 	bool Disconnect(DWORD64 SessionID); // SESSION_ID
 	//bool SendPacket(DWORD64 SessionID, CSerealBuffer* CPacket);
@@ -71,7 +57,7 @@ private:
 	unsigned int CLanWorkerThread(void* pComPort);
 
 	//void init_Set();
-	void init_socket();
+	void init_socket();//초기 초기화값
 
 	//패킷 RECV SEND함수
 	void RecvPost(st_SESSION* _pSession);
@@ -79,23 +65,12 @@ private:
 	
 	//세션관리함수
 	bool SesionRelease(st_SESSION* _pSession);
-	//void _Disconnect(DWORD64 _pSESSIONID, CSerealBuffer* CPacket);
-
-	//virtual bool OnConnectionRequest(IP, Port) = 0;// < accept 직후
-	///return false; 시 클라이언트 거부.
-	//return true; 시 접속 허용
-
-	//virtual void OnClientJoin(Client 정보 / SessionID / 기타등등) = 0; < Accept 후 접속처리 완료 후 호출.
-	//virtual void OnClientLeave(DWORD64 _pSessionId) = 0;// < Release 후 호출
-	//virtual void OnRecv(DWORD64 SessionID, CSerealBuffer* CPacket) = 0;// < 패킷 수신 완료 후
-	//virtual void OnSend(DWORD64 SessionID, int sendsize) = 0;    //< 패킷 송신 완료 후
-	//virtual void OnWorkerThreadBegin() = 0;                    //< 워커스레드 GQCS 바로 하단에서 호출
-	//virtual void OnWorkerThreadEnd() = 0;
 
 	virtual bool OnConnectionRequest(WCHAR* ipStr, DWORD ip, USHORT port) = 0;
 	virtual void OnClientJoin(WCHAR* ipStr, DWORD ip, USHORT port, ULONGLONG sessionID) = 0;
 	virtual void OnClientLeave(ULONGLONG sessionID) = 0; // Release후 호출
 	virtual void OnRecv(ULONGLONG sessionID, CSerealBuffer* CPacket) = 0;
+	virtual void OnError(int errorcode, WCHAR* msg) = 0;
 	//virtual void OnErrorOccured(DWORD errorCode, const WCHAR* error) = 0;
 
 	virtual void OnWorkerThreadBegin() = 0;//< 워커스레드 GQCS 바로 하단에서 호출
@@ -112,11 +87,14 @@ private:
 private:
 	//스레드관리
 	HANDLE _CreateThread[30];//스레드 핸들
-	DWORD Thread_Count;//총스레드 개수
+	HANDLE _AcceptThread;
+	DWORD IOCP_Thread_Count;//총스레드 개수
 	DWORD Thread_Running;
 	bool Nagle_Onoff;
+	bool SNDBUF_ZERO_OnOff;
 	SOCKET listen_socket;
 	DWORD PORT;
+	DWORD BACK_LOG_SIZE;
 
 	DWORD64 UNI_KEY = 1;
 	
@@ -126,11 +104,11 @@ private:
 	std::unordered_map <DWORD64, st_SESSION*> SESSION_MAP;
 	CMemoryPool<st_SESSION> _SESSION_POOL;//세션 오브젝트 풀
 	CMemoryPool<CSerealBuffer> _PACKET_POOL;//세션 오브젝트 풀
-
+	
 	DWORD MAX_SESSION_COUNT;
 	SRWLOCK SESSION_MAP_LOCK;//세션맵용 LOCK
-	SRWLOCK SESSION_POOL_LOCK;//세션맵용 LOCK
-	SRWLOCK PACKET_LOCK;//세션맵용 LOCK
+	//SRWLOCK SESSION_POOL_LOCK;//세션맵용 LOCK
+	//SRWLOCK PACKET_LOCK;//세션맵용 LOCK
 	HANDLE IOCP_WORKER_POOL;
 	
 	//모니터링용

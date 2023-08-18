@@ -458,6 +458,7 @@ void CLanClient::SendPacket(CSerealBuffer* CPacket)
 
 bool CLanClient::Disconnect()
 {
-	//closesocket(Player_Session->_Id);
+	closesocket(Player_Session->_Sock);
+	return true;
 	//delete Player_Session;
 }
