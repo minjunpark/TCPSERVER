@@ -21,6 +21,7 @@
 #include <new.h>
 
 
+
 //namespace procademy
 //{
 template <class DATA>
@@ -41,10 +42,17 @@ private:
 		Node* next = nullptr;
 	};
 
+	struct CMemoryPool_THREAD
+	{
+		DWORD Thread_Id;
+		CMemoryPool<DATA>* pointer;
+	};
+
+
 public:
 	// 스택 방식으로 반환된 (미사용) 오브젝트 블럭을 관리.
 	Node* _FreeNode;//얘가 헤드임
-
+	CMemoryPool() {};
 	//////////////////////////////////////////////////////////////////////////
 	// 생성자, 파괴자.
 	//
@@ -90,10 +98,11 @@ public:
 		while (_Node != nullptr)//자기자신이 _FreeNode노드가 된다면 모든 노드가 제거된것이다.
 		{
 			Node* tmpNode = _Node;//노드 임시세팅
+			_Node = _Node->next;//다음노드로 넘어간다.
 			if (m_iPlacementNew == false)//소멸자를 Free에서 호출하지 않게 만들었기때문에
 				tmpNode->data.~DATA();//객체의 소멸자를 호출시키면서
 			free(tmpNode);//사용하는 실제 메모리를 free상태로 바꿔준다.
-			_Node = _Node->next;//다음노드로 넘어간다.
+			m_iCapacity--;
 		}
 	};
 
@@ -105,7 +114,6 @@ public:
 	//////////////////////////////////////////////////////////////////////////
 	DATA* Alloc(void)
 	{
-		AcquireSRWLockExclusive(&CMemory_Lock);
 		if ((m_iCapacity - m_iUseCount) > 0)//사용할수 있는 메모리 오브젝트가 있다면
 		{
 			Node* OldNode = _FreeNode;
@@ -119,7 +127,7 @@ public:
 			_FreeNode = OldNode->next;//스택에서 노드 제거
 
 			m_iUseCount++;//총사용량을 올려준다.
-			ReleaseSRWLockExclusive(&CMemory_Lock);
+			//ReleaseSRWLockExclusive(&CMemory_Lock);
 			return Data;//할당된 메모리를 리턴해준다.
 		}
 		else//사용 할 수 있는 메모리 오브젝트가 없다면 만들어서 리턴해준다.
@@ -138,7 +146,6 @@ public:
 
 			m_iUseCount++;//사용량 올려주고
 			m_iCapacity++;//노드 총 개수를 증가시켜준다.
-			ReleaseSRWLockExclusive(&CMemory_Lock);
 			return Data;
 		}
 	};
@@ -159,8 +166,7 @@ public:
 		//같은 포인터 변수 중복 입력으로인한 실수방지
 		if ((&_FreeNode->data) == pData)
 			return false;
-		AcquireSRWLockExclusive(&CMemory_Lock);
-		bool Free_On = false;
+		
 		if (m_iUseCount > 0)//현재 사용중인 값이 있다면
 		{
 			//Alloc시 준값은 Node 가아니라 Node안의 data부분이므로 Node가장위부터 data까지를 계산한다.
@@ -169,8 +175,7 @@ public:
 
 			if (ReData->OVER_GUARD != m_iBufferPointer || ReData->UNDER_GUARD != m_iBufferPointer)
 			{
-				Free_On = false;
-				//return false;//다른 오브젝트의 포인터가 들어왔거나 데이터가 오염됬다는 뜻이다.
+				return false;//다른 오브젝트의 포인터가 들어왔거나 데이터가 오염됬다는 뜻이다.
 			}
 			//로그 남기거나 exception 일으키기가 필요한데 우선 false만 처리한다.
 
@@ -181,11 +186,9 @@ public:
 			_FreeNode = ReData;//스택에 다시 쌓는다.
 
 			m_iUseCount--;//사용중인 카운터를 줄인다.
-			Free_On = true;
-			//return true;
+			return true;
 		}
-		ReleaseSRWLockExclusive(&CMemory_Lock);
-		return Free_On;//현재 사용중 카운터가 없는 상황인데 들어온 경우 이므로 false를 리턴한다.
+		return false;//현재 사용중 카운터가 없는 상황인데 들어온 경우 이므로 false를 리턴한다.
 	};
 
 	void print()
@@ -228,6 +231,22 @@ public:
 		}
 	};
 
+	void SetFree()
+	{
+		if (m_iCapacity == 0)//0개라면 아무것도 없는것이니까 무시해도된다.
+			return;
+
+		Node* _Node = _FreeNode;
+		while (_Node != nullptr)//자기자신이 _FreeNode노드가 된다면 모든 노드가 제거된것이다.
+		{
+			Node* tmpNode = _Node;//노드 임시세팅
+			_Node = _Node->next;//다음노드로 넘어간다.
+			if (m_iPlacementNew == false)//소멸자를 Free에서 호출하지 않게 만들었기때문에
+				tmpNode->data.~DATA();//객체의 소멸자를 호출시키면서
+			free(tmpNode);//사용하는 실제 메모리를 free상태로 바꿔준다.
+			m_iCapacity--;//전체갯수감소시키기
+		}
+	};
 
 	//////////////////////////////////////////////////////////////////////////
 	// 현재 확보 된 블럭 개수를 얻는다. (메모리풀 내부의 전체 개수)
@@ -245,7 +264,8 @@ public:
 	//////////////////////////////////////////////////////////////////////////
 	int		GetUseCount(void) { return m_iUseCount; }
 
-
 };
 //}
+
+
 #endif

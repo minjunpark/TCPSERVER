@@ -24,6 +24,8 @@ constexpr int ATTACK2_Y_DISTANCE = 30;
 constexpr int ATTACK3_X_DISTANCE = 80;
 constexpr int ATTACK3_Y_DISTANCE = 40;
 
+
+
 #include "PacketFunction.h"
 #include "Session.h"
 #include "Player.h"
@@ -33,6 +35,26 @@ constexpr int ATTACK3_Y_DISTANCE = 40;
 #include <conio.h>
 #include <list>
 #include <set>
+
+// 01.09[SUN]
+// 큰 틀잡기.
+// 세션, 플레이어, 섹터 구현
+// 패킷생성 함수
+// 01.10[MON]
+// 패킷 처리함수 만들기
+// 업데이트 로직 구현
+// ~띵가띵가
+// 01.14[FRI]
+// Sector 체크 및 BroadcastNearBy함수 구현
+// 01.15[SAT]
+// frame말고 deltaTime으로 바꿔보기
+// 01.16[SUN]
+// sync packet 안보내려고 노력중...
+// 
+//
+
+
+
 
 
 /// global variable
@@ -1697,7 +1719,8 @@ SOCKET NetworkInitial()
 	}
 	printf("bind clear\n");
 
-	int listenRet = listen(sock, SOMAXCONN_HINT(1000));
+	//int listenRet = listen(sock, SOMAXCONN_HINT(1000));
+	int listenRet = listen(sock, 1000);
 	if (listenRet == SOCKET_ERROR)
 	{
 		closesocket(sock);

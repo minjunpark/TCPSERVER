@@ -1,14 +1,8 @@
 #pragma once
-#ifndef __RING_BUFFER_HEADER__
-#define __RING_BUFFER_HEADER__
-#define __UNIV_DEVELOPER_
 #include <WinSock2.h>
 #include <Windows.h>
 #define CRASH() int*ptr=nullptr;\
 *ptr=100
-
-namespace univ_dev
-{
 
 	class RingBuffer
 	{
@@ -51,9 +45,3 @@ namespace univ_dev
 
 		int ringBufferSize;
 	};
-}
-
-
-
-
-#endif

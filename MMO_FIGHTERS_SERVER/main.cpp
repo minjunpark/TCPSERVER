@@ -105,9 +105,9 @@ int sync_attack1 = 0;
 int sync_attack2 = 0;
 int sync_attack3 = 0;
 
-CMemoryPool<st_SESSION> _SessionPool(6000, FALSE);//세션 오브젝트 풀
-CMemoryPool<st_PLAYER> _PlayerPool(6000, FALSE);//플레이어 오브젝트 풀
-CMemoryPool<CSerealBuffer> _PacketPool(500, FALSE);//패킷풀
+CMemoryPool<st_SESSION> _SessionPool(4000, FALSE);//세션 오브젝트 풀
+CMemoryPool<st_PLAYER> _PlayerPool(4000, FALSE);//플레이어 오브젝트 풀
+CMemoryPool<CSerealBuffer> _PacketPool(50, FALSE);//패킷풀
 
 //섹터를 처리할때
 //섹터처리 문제에서 반복문을 최대한 줄이려면
@@ -148,12 +148,13 @@ int main()
 		NetWork();//네트워크
 		Update();//로직
 		//ServerControl();//서버 키보드컨트롤
-		Monitor();//모니터링값 콘솔 출력
+		//Monitor();//모니터링값 콘솔 출력
 	}
 }
 
 void init_Game()
 {
+	
 	srand(1);
 	HANDLE hThread = GetCurrentThread();
 	//윈도우에 여러가지 프로그램 켜두니까 들쭉날쭉함
@@ -678,52 +679,52 @@ void Update()
 		//살아있으면서 움직이고 있는 세션이라면 원하는 방향으로 값을 이동시킨다.
 		switch (pPlayer->_Direction)
 		{
-		case dfPACKET_MOVE_DIR_LL:
-		{
-			pPlayer->_X -= defualt_MOVE_X;
-		}
-		break;
-		case dfPACKET_MOVE_DIR_LU:
-		{
-			pPlayer->_X -= defualt_MOVE_X;
-			pPlayer->_Y -= defualt_MOVE_Y;
-		}
-		break;
-		case dfPACKET_MOVE_DIR_UU:
-		{
-			pPlayer->_Y -= defualt_MOVE_Y;
-		}
-		break;
-		case dfPACKET_MOVE_DIR_RU:
-		{
-			pPlayer->_X += defualt_MOVE_X;
-			pPlayer->_Y -= defualt_MOVE_Y;
-		}
-		break;
-		case dfPACKET_MOVE_DIR_RR:
-		{
-			pPlayer->_X += defualt_MOVE_X;
-		}
-		break;
-		case dfPACKET_MOVE_DIR_RD:
-		{
-			pPlayer->_X += defualt_MOVE_X;
-			pPlayer->_Y += defualt_MOVE_Y;
-		}
-		break;
-		case dfPACKET_MOVE_DIR_DD:
-		{
-			pPlayer->_Y += defualt_MOVE_Y;
-		}
-		break;
-		case dfPACKET_MOVE_DIR_LD:
-		{
-			pPlayer->_X -= defualt_MOVE_X;
-			pPlayer->_Y += defualt_MOVE_Y;
-		}
-		break;
-		default:
-			continue;
+			case dfPACKET_MOVE_DIR_LL:
+			{
+				pPlayer->_X -= defualt_MOVE_X;
+			}
+			break;
+			case dfPACKET_MOVE_DIR_LU:
+			{
+				pPlayer->_X -= defualt_MOVE_X;
+				pPlayer->_Y -= defualt_MOVE_Y;
+			}
+			break;
+			case dfPACKET_MOVE_DIR_UU:
+			{
+				pPlayer->_Y -= defualt_MOVE_Y;
+			}
+			break;
+			case dfPACKET_MOVE_DIR_RU:
+			{
+				pPlayer->_X += defualt_MOVE_X;
+				pPlayer->_Y -= defualt_MOVE_Y;
+			}
+			break;
+			case dfPACKET_MOVE_DIR_RR:
+			{
+				pPlayer->_X += defualt_MOVE_X;
+			}
+			break;
+			case dfPACKET_MOVE_DIR_RD:
+			{
+				pPlayer->_X += defualt_MOVE_X;
+				pPlayer->_Y += defualt_MOVE_Y;
+			}
+			break;
+			case dfPACKET_MOVE_DIR_DD:
+			{
+				pPlayer->_Y += defualt_MOVE_Y;
+			}
+			break;
+			case dfPACKET_MOVE_DIR_LD:
+			{
+				pPlayer->_X -= defualt_MOVE_X;
+				pPlayer->_Y += defualt_MOVE_Y;
+			}
+			break;
+			default:
+				continue;
 		}
 		SectorUpdate(pPlayer);
 	}
@@ -1955,7 +1956,8 @@ void SectorUpdate(st_PLAYER* pPlayer)
 	if (pPlayer->_cur_Pos._Y < 0)
 		pPlayer->_cur_Pos._Y = 0;
 
-	if (pPlayer->_cur_Pos._X != pPlayer->_old_Pos._X || pPlayer->_cur_Pos._Y != pPlayer->_old_Pos._Y)
+	if (pPlayer->_cur_Pos._X != pPlayer->_old_Pos._X ||
+		pPlayer->_cur_Pos._Y != pPlayer->_old_Pos._Y)
 		sectorChanged = true;
 
 	if (sectorChanged)
@@ -2013,6 +2015,7 @@ void SectorUpdate(st_PLAYER* pPlayer)
 			sendPacket_SectorOne(pPlayer->pSession, pRemovePacket, xIdx, yIdx);
 			pRemoveOtherPlayerPacket->Clear();
 		}
+
 		for (int j = 0; j < addSectorAround.iCount; j++)
 		{
 			int xIdx = addSectorAround.Arroud[j]._X;
@@ -2032,49 +2035,49 @@ void SectorUpdate(st_PLAYER* pPlayer)
 				{
 					switch (currentPlayer->_Direction)
 					{
-					case dfPACKET_MOVE_DIR_LL:
-					case dfPACKET_MOVE_DIR_LU:
-					case dfPACKET_MOVE_DIR_UU:
-					case dfPACKET_MOVE_DIR_RU:
-					case dfPACKET_MOVE_DIR_RR:
-					case dfPACKET_MOVE_DIR_RD:
-					case dfPACKET_MOVE_DIR_DD:
-					case dfPACKET_MOVE_DIR_LD:
-					{
-						mp_MOVE_START(pMovePacket, currentPlayer->_Id, currentPlayer->_Direction, currentPlayer->_X, currentPlayer->_Y);
-						sendPacket_UniCast(pPlayer->pSession, pMovePacket);
-						pMovePacket->Clear();
-						break;
-					}
+						case dfPACKET_MOVE_DIR_LL:
+						case dfPACKET_MOVE_DIR_LU:
+						case dfPACKET_MOVE_DIR_UU:
+						case dfPACKET_MOVE_DIR_RU:
+						case dfPACKET_MOVE_DIR_RR:
+						case dfPACKET_MOVE_DIR_RD:
+						case dfPACKET_MOVE_DIR_DD:
+						case dfPACKET_MOVE_DIR_LD:
+						{
+							mp_MOVE_START(pMovePacket, currentPlayer->_Id, currentPlayer->_Direction, currentPlayer->_X, currentPlayer->_Y);
+							sendPacket_UniCast(pPlayer->pSession, pMovePacket);
+							pMovePacket->Clear();
+							break;
+						}
 					}
 				}
 				if (pPlayer->_Direction_check == ON_MOVE)
 				{
 					switch (pPlayer->_Direction)
 					{
-					case dfPACKET_MOVE_DIR_LL:
-					case dfPACKET_MOVE_DIR_LU:
-					case dfPACKET_MOVE_DIR_UU:
-					case dfPACKET_MOVE_DIR_RU:
-					case dfPACKET_MOVE_DIR_RR:
-					case dfPACKET_MOVE_DIR_RD:
-					case dfPACKET_MOVE_DIR_DD:
-					case dfPACKET_MOVE_DIR_LD:
-					{
-						mp_MOVE_START(pMovePacket, pPlayer->_Id, pPlayer->_Direction, pPlayer->_X, pPlayer->_Y);
-						sendPacket_UniCast(currentPlayer->pSession, pMovePacket);
-						pMovePacket->Clear();
-						break;
-					}
+						case dfPACKET_MOVE_DIR_LL:
+						case dfPACKET_MOVE_DIR_LU:
+						case dfPACKET_MOVE_DIR_UU:
+						case dfPACKET_MOVE_DIR_RU:
+						case dfPACKET_MOVE_DIR_RR:
+						case dfPACKET_MOVE_DIR_RD:
+						case dfPACKET_MOVE_DIR_DD:
+						case dfPACKET_MOVE_DIR_LD:
+						{
+							mp_MOVE_START(pMovePacket, pPlayer->_Id, pPlayer->_Direction, pPlayer->_X, pPlayer->_Y);
+							sendPacket_UniCast(currentPlayer->pSession, pMovePacket);
+							pMovePacket->Clear();
+							break;
+						}
 					}
 				}
 			}
 		}
+		pMovePacket->Clear();
 		pRemovePacket->Clear();
 		pCreatePacket->Clear();
 		pRemoveOtherPlayerPacket->Clear();
 		pCreateOtherPlayerPacket->Clear();
-		pMovePacket->Clear();
 		_PacketPool.Free(pMovePacket);
 		_PacketPool.Free(pRemovePacket);
 		_PacketPool.Free(pCreatePacket);

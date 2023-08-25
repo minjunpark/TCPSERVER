@@ -1,8 +1,6 @@
 #include "PacketFunction.h"
-#include "SerializingBuffer.h"
-namespace univ_dev
-{
-	void MakePacketCreateNewPlayer(Packet& packet,unsigned int playerID, BYTE direction, unsigned short x, unsigned short y, BYTE HP)
+#include "CSerealBuffer.h"
+	void MakePacketCreateNewPlayer(CSerealBuffer& packet,unsigned int playerID, BYTE direction, unsigned short x, unsigned short y, BYTE HP)
 	{
 		PacketHeader header;
 		header.code = 0x89;
@@ -11,7 +9,7 @@ namespace univ_dev
 		packet << header.code << header.payloadSize << header.packetType << playerID << direction << x << y << HP;
 	}
 
-	void MakePacketCreatePlayer(Packet& packet, unsigned int playerID, BYTE direction, unsigned short x, unsigned short y, BYTE HP)
+	void MakePacketCreatePlayer(CSerealBuffer& packet, unsigned int playerID, BYTE direction, unsigned short x, unsigned short y, BYTE HP)
 	{
 		PacketHeader header;
 		header.code = 0x89;
@@ -20,7 +18,7 @@ namespace univ_dev
 		packet << header.code << header.payloadSize << header.packetType << playerID << direction << x << y << HP;
 	}
 
-	void MakePacketDeletePlayer(Packet& packet, unsigned int playerID)
+	void MakePacketDeletePlayer(CSerealBuffer& packet, unsigned int playerID)
 	{
 		PacketHeader header;
 		header.code = 0x89;
@@ -29,7 +27,7 @@ namespace univ_dev
 		packet << header.code << header.payloadSize << header.packetType << playerID;
 	}
 
-	void MakePacketPlayerMoveStart(Packet& packet, unsigned int playerID, BYTE moveDirection, unsigned short x, unsigned short y)
+	void MakePacketPlayerMoveStart(CSerealBuffer& packet, unsigned int playerID, BYTE moveDirection, unsigned short x, unsigned short y)
 	{
 		PacketHeader header;
 		header.code = 0x89;
@@ -38,7 +36,7 @@ namespace univ_dev
 		packet << header.code << header.payloadSize << header.packetType << playerID << moveDirection << x << y;
 	}
 
-	void MakePacketPlayerMoveStop(Packet& packet, unsigned int playerID, BYTE direction, unsigned short x, unsigned short y)
+	void MakePacketPlayerMoveStop(CSerealBuffer& packet, unsigned int playerID, BYTE direction, unsigned short x, unsigned short y)
 	{
 		PacketHeader header;
 		header.code = 0x89;
@@ -47,7 +45,7 @@ namespace univ_dev
 		packet << header.code << header.payloadSize << header.packetType << playerID << direction << x << y;
 	}
 
-	void MakePacketPlayerAttack1(Packet& packet, unsigned int playerID, BYTE direction, unsigned short x, unsigned short y)
+	void MakePacketPlayerAttack1(CSerealBuffer& packet, unsigned int playerID, BYTE direction, unsigned short x, unsigned short y)
 	{
 		PacketHeader header;
 		header.code = 0x89;
@@ -56,7 +54,7 @@ namespace univ_dev
 		packet << header.code << header.payloadSize << header.packetType << playerID << direction << x << y;
 	}
 
-	void MakePacketPlayerAttack2(Packet& packet, unsigned int playerID, BYTE direction, unsigned short x, unsigned short y)
+	void MakePacketPlayerAttack2(CSerealBuffer& packet, unsigned int playerID, BYTE direction, unsigned short x, unsigned short y)
 	{
 		PacketHeader header;
 		header.code = 0x89;
@@ -65,7 +63,7 @@ namespace univ_dev
 		packet << header.code << header.payloadSize << header.packetType << playerID << direction << x << y;
 	}
 
-	void MakePacketPlayerAttack3(Packet& packet, unsigned int playerID, BYTE direction, unsigned short x, unsigned short y)
+	void MakePacketPlayerAttack3(CSerealBuffer& packet, unsigned int playerID, BYTE direction, unsigned short x, unsigned short y)
 	{
 		PacketHeader header;
 		header.code = 0x89;
@@ -74,7 +72,7 @@ namespace univ_dev
 		packet << header.code << header.payloadSize << header.packetType << playerID << direction << x << y;
 	}
 
-	void MakePacketPlayerHitDamage(Packet& packet, unsigned int attackPlayerID, unsigned int damagedPlayerID, BYTE damageHP)
+	void MakePacketPlayerHitDamage(CSerealBuffer& packet, unsigned int attackPlayerID, unsigned int damagedPlayerID, BYTE damageHP)
 	{
 		PacketHeader header;
 		header.code = 0x89;
@@ -83,7 +81,7 @@ namespace univ_dev
 		packet << header.code << header.payloadSize << header.packetType << attackPlayerID << damagedPlayerID << damageHP;
 	}
 
-	void MakePacketPositionSync(Packet& packet, unsigned int playerID, unsigned short x, unsigned short y)
+	void MakePacketPositionSync(CSerealBuffer& packet, unsigned int playerID, unsigned short x, unsigned short y)
 	{
 		PacketHeader header;
 		header.code = 0x89;
@@ -91,7 +89,7 @@ namespace univ_dev
 		header.packetType = dfPACKET_SC_SYNC;
 		packet << header.code << header.payloadSize << header.packetType << playerID << x << y;
 	}
-	void MakePacketEcho(Packet& packet, int time)
+	void MakePacketEcho(CSerealBuffer& packet, int time)
 	{
 		PacketHeader header;
 		header.code = 0x89;
@@ -99,4 +97,3 @@ namespace univ_dev
 		header.packetType  = dfPACKET_SC_ECHO;
 		packet << header.code << header.payloadSize << header.packetType << time;
 	}
-}

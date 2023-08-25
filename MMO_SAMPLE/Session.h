@@ -1,34 +1,29 @@
 #pragma once
-#ifndef __SESSION_HEADER__
-#define __SESSION_HEADER__
-#define __UNIV_DEVELOPER_
-
-#include "RingBuffer.h"
+//#include "RingBuffer.h"
+#include "CRingBuffer.h"
 
 #include <unordered_map>
-#include "ObjectFreeList.hpp"
-
-namespace univ_dev
-{
-	constexpr int RECV_TIMEOUT = 60000;
+//#include "CMemoryPool.hpp"
+#include "CMemoryPool.h"
+	constexpr int RECV_TIMEOUT = 30000;
 
 	struct Session
 	{
 		SOCKET sock;
 		DWORD sessionID;
-		RingBuffer RQ;
-		RingBuffer SQ;
+		CRingBuffer RQ;
+		CRingBuffer SQ;
 		DWORD lastRecvTime;
 	};
 	extern std::unordered_map<SOCKET, Session*>g_SessionMap;
-	extern ObjectFreeList<Session> g_SessionObjectPool;
+	extern CMemoryPool<Session> g_SessionObjectPool;
 
 	Session* FindSession(SOCKET sock);
 	Session* CreateSession(SOCKET sock);
 	void RemoveSession(SOCKET sock);
 	
 	std::unordered_map<SOCKET, Session*> g_SessionMap;
-	univ_dev::ObjectFreeList<Session> g_SessionObjectPool;
+	CMemoryPool<Session> g_SessionObjectPool;
 	int g_SessionID = 1;
 	Session* FindSession(SOCKET sock)
 	{
@@ -70,10 +65,3 @@ namespace univ_dev
 
 		g_SessionMap.erase(sock);
 	}
-
-}
-
-
-
-
-#endif // !__SESSION_HEADER__

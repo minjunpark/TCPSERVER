@@ -1,10 +1,7 @@
 #pragma once
-#ifndef __PLAYER_HEADER__
-#define __PLAYER_HEADER__
-#define __UNIV_DEVELOPER_
 #include "Session.h"
 #include "Sector.h"
-#include "ObjectFreeList.hpp"
+#include "CMemoryPool.h"
 #include <unordered_map>
 
 #define dfPACKET_MOVE_DIR_LL					0
@@ -15,8 +12,6 @@
 #define dfPACKET_MOVE_DIR_RD					5
 #define dfPACKET_MOVE_DIR_DD					6
 #define dfPACKET_MOVE_DIR_LD					7
-namespace univ_dev
-{
 	struct Session;
 
 	struct Player
@@ -39,13 +34,13 @@ namespace univ_dev
 
 	};
 	//extern std::unordered_map<DWORD, Player*> g_PlayerMap;
-	//extern ObjectFreeList<Player> g_PlayerObjectPool;
+	//extern CMemoryPool<Player> g_PlayerObjectPool;
 	//Player* FindPlayer(DWORD sessionID);
 	//Player* CreatePlayer(Session* session);
 	//void RemovePlayer(Session* session);
 
 	std::unordered_map<DWORD, Player*> g_PlayerMap;
-	univ_dev::ObjectFreeList<Player> g_PlayerObjectPool;
+	CMemoryPool<Player> g_PlayerObjectPool;
 	Player* FindPlayer(DWORD sessionID)
 	{
 		auto iter = g_PlayerMap.find(sessionID);
@@ -68,13 +63,13 @@ namespace univ_dev
 		newPlayer->xPos = rand() % 6400;
 		newPlayer->yPos = rand() % 6400;
 		newPlayer->HP = 100;
-		newPlayer->oldSector.x = newPlayer->curSector.x = newPlayer->xPos / univ_dev::SECTOR_WIDTH;
-		newPlayer->oldSector.y = newPlayer->curSector.y = newPlayer->yPos / univ_dev::SECTOR_WIDTH;
+		newPlayer->oldSector.x = newPlayer->curSector.x = newPlayer->xPos / SECTOR_WIDTH;
+		newPlayer->oldSector.y = newPlayer->curSector.y = newPlayer->yPos / SECTOR_WIDTH;
 
-		if (newPlayer->oldSector.x >= univ_dev::SECTOR_MAX_X)
-			newPlayer->oldSector.x = univ_dev::SECTOR_MAX_X - 1;
-		if (newPlayer->oldSector.y >= univ_dev::SECTOR_MAX_X)
-			newPlayer->oldSector.y = univ_dev::SECTOR_MAX_Y - 1;
+		if (newPlayer->oldSector.x >= SECTOR_MAX_X)
+			newPlayer->oldSector.x = SECTOR_MAX_X - 1;
+		if (newPlayer->oldSector.y >= SECTOR_MAX_X)
+			newPlayer->oldSector.y = SECTOR_MAX_Y - 1;
 		if (newPlayer->oldSector.x < 0) newPlayer->oldSector.x = 0;
 		if (newPlayer->oldSector.y < 0) newPlayer->oldSector.y = 0;
 
@@ -94,8 +89,3 @@ namespace univ_dev
 		g_PlayerMap.erase(session->sessionID);
 		g_PlayerObjectPool.Free(removePlayer);
 	}
-
-}
-
-
-#endif // !__PLAYER_HEADER__

@@ -18,6 +18,7 @@ struct st_SESSION
 
 unsigned __stdcall _NET_WorkerThread(void* param);
 unsigned __stdcall _NET_AcceptThread(void* param);
+unsigned __stdcall _NET_LogicThread(void* param);
 
 class CLanServer
 {
@@ -25,8 +26,8 @@ public:
 	CLanServer();
 	~CLanServer();
 
-	bool Start(DWORD64 CIP, DWORD CPORT, DWORD CThraed_Count, 
-		DWORD CThread_Running, bool CNagle_Onoff, DWORD CMax_Session_Count,
+	bool Start(const char* CIP, DWORD CPORT, DWORD CThraed_Count,
+	DWORD CThread_Running, bool CNagle_Onoff, DWORD CMax_Session_Count,
 	DWORD backlogSize);//시작
 	// 오픈 IP / 포트 / 워커스레드 수(생성수, 러닝수) / 나글옵션 / 최대접속자 수
 	void Stop();//서버종료
@@ -35,7 +36,8 @@ public:
 
 	bool Disconnect(DWORD64 SessionID); // SESSION_ID
 	//bool SendPacket(DWORD64 SessionID, CSerealBuffer* CPacket);
-	void SendPacket(DWORD64 _pSESSIONID, CSerealBuffer* CPacket);
+	bool SendPacket(DWORD64 _pSESSIONID, CSerealBuffer* CPacket);
+	bool Non_Worker_SendPacket(DWORD64 _pSESSIONID, CSerealBuffer* CPacket);
 	
 	//스레드
 	void All_Moniter();//모든 통계정보 출력
@@ -50,11 +52,18 @@ public:
 	bool Socket_Error();
 
 private:
+	enum
+	{
+		THREAD_MAXIMUM = 30,
+		Worker_PACKET_POOL_SIZE = 10
+	};
 	friend unsigned __stdcall _NET_WorkerThread(void* param);
 	friend unsigned __stdcall _NET_AcceptThread(void* param);
+	friend unsigned __stdcall _NET_LogicThread(void* param);
 
 	unsigned int CLanAcceptThread(void* pComPort);
 	unsigned int CLanWorkerThread(void* pComPort);
+	unsigned int CLanLogicThread(void* pComPort);
 
 	//void init_Set();
 	void init_socket();//초기 초기화값
@@ -66,9 +75,9 @@ private:
 	//세션관리함수
 	bool SesionRelease(st_SESSION* _pSession);
 
-	virtual bool OnConnectionRequest(WCHAR* ipStr, DWORD ip, USHORT port) = 0;
-	virtual void OnClientJoin(WCHAR* ipStr, DWORD ip, USHORT port, ULONGLONG sessionID) = 0;
-	virtual void OnClientLeave(ULONGLONG sessionID) = 0; // Release후 호출
+	virtual bool OnAcceptRequest(WCHAR* ipStr, DWORD ip, USHORT port) = 0;
+	virtual void OnAccept(WCHAR* ipStr, DWORD ip, USHORT port, ULONGLONG sessionID) = 0;
+	virtual void OnRelease(ULONGLONG sessionID) = 0; // Release후 호출
 	virtual void OnRecv(ULONGLONG sessionID, CSerealBuffer* CPacket) = 0;
 	virtual void OnError(int errorcode, WCHAR* msg) = 0;
 	//virtual void OnErrorOccured(DWORD errorCode, const WCHAR* error) = 0;
@@ -86,13 +95,14 @@ private:
 
 private:
 	//스레드관리
-	HANDLE _CreateThread[30];//스레드 핸들
+	HANDLE _CreateThread[THREAD_MAXIMUM];//스레드 핸들
 	HANDLE _AcceptThread;
 	DWORD IOCP_Thread_Count;//총스레드 개수
 	DWORD Thread_Running;
 	bool Nagle_Onoff;
 	bool SNDBUF_ZERO_OnOff;
 	SOCKET listen_socket;
+	char CLAN_IP[20];
 	DWORD PORT;
 	DWORD BACK_LOG_SIZE;
 
@@ -103,11 +113,15 @@ private:
 
 	std::unordered_map <DWORD64, st_SESSION*> SESSION_MAP;
 	CMemoryPool<st_SESSION> _SESSION_POOL;//세션 오브젝트 풀
-	CMemoryPool<CSerealBuffer> _PACKET_POOL;//세션 오브젝트 풀
+	//CMemoryPool<CSerealBuffer> _PACKET_POOL;//패킷 오브젝트 풀
 	
+	DWORD _PACKET_POOL_Index;
+	DWORD _PACKET_POOL_Count = 0;
+	CMemoryPool<CSerealBuffer> _PACKET_POOL_ARR[THREAD_MAXIMUM];//세션 오브젝트 풀
+
 	DWORD MAX_SESSION_COUNT;
 	SRWLOCK SESSION_MAP_LOCK;//세션맵용 LOCK
-	//SRWLOCK SESSION_POOL_LOCK;//세션맵용 LOCK
+	SRWLOCK SESSION_POOL_LOCK;//세션맵용 LOCK
 	//SRWLOCK PACKET_LOCK;//세션맵용 LOCK
 	HANDLE IOCP_WORKER_POOL;
 	

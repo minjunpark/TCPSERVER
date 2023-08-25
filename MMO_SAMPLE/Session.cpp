@@ -2,7 +2,7 @@
 //namespace univ_dev
 //{
 //	std::unordered_map<SOCKET, Session*> g_SessionMap;
-//	univ_dev::ObjectFreeList<Session> g_SessionObjectPool;
+//	CMemoryPool<Session> g_SessionObjectPool;
 //	int g_SessionID = 1;
 //	Session* FindSession(SOCKET sock)
 //	{

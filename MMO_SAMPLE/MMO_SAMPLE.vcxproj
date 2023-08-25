@@ -51,6 +51,7 @@
     <PlatformToolset>v143</PlatformToolset>
     <WholeProgramOptimization>true</WholeProgramOptimization>
     <CharacterSet>Unicode</CharacterSet>
+    <UseOfMfc>false</UseOfMfc>
   </PropertyGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.props" />
   <ImportGroup Label="ExtensionSettings">
@@ -118,6 +119,7 @@
       <SDLCheck>true</SDLCheck>
       <PreprocessorDefinitions>NDEBUG;_CONSOLE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <ConformanceMode>true</ConformanceMode>
+      <RuntimeLibrary>MultiThreaded</RuntimeLibrary>
     </ClCompile>
     <Link>
       <SubSystem>Console</SubSystem>
@@ -127,15 +129,20 @@
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
+    <ClCompile Include="CRingBuffer.cpp" />
+    <ClCompile Include="CSerealBuffer.cpp" />
     <ClCompile Include="PacketFunction.cpp" />
     <ClCompile Include="Player.cpp" />
     <ClCompile Include="profiler.cpp" />
     <ClCompile Include="RingBuffer.cpp" />
     <ClCompile Include="SerializingBuffer.cpp" />
     <ClCompile Include="Session.cpp" />
-    <ClCompile Include="TCP_Fighter_main.cpp" />
+    <ClCompile Include="main.cpp" />
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="CMemoryPool.h" />
+    <ClInclude Include="CRingBuffer.h" />
+    <ClInclude Include="CSerealBuffer.h" />
     <ClInclude Include="ObjectFreeList.hpp" />
     <ClInclude Include="PacketDefine.h" />
     <ClInclude Include="PacketFunction.h" />

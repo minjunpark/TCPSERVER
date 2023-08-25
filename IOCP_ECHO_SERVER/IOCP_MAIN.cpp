@@ -15,28 +15,7 @@ int main()
 	//printf("Num of Running Thread : ");
 	//scanf_s("%d", &runningThread);
 	//IOCP_ECHO_SERVER server(serverPort, SOMAXCONN, threadPoolSize, runningThread, false, 10000);Z
-	IOCP_ECHO_SERVER server(0, serverPort, threadPoolSize, runningThread, false, 5000, 200);
-	while (1)
-	{
-		server.All_Moniter();
-
-		int key = _getch();
-		if (key == 'w')
-		{
-			ProfileDataOutText(L"ABC");
-		}
-		//if (key == 's')
-		//{
-		//	printf("process Stop START\n");
-		//	closesocket(listen_socket);
-		//	g_Shutdown = true;
-		//	for (int i = 0; i < Thread_Count; i++)
-		//		PostQueuedCompletionStatus(IOCP_WORKER_POOL, 0, 0, 0);
-		//	break;
-		//	//특정 키카 눌리면 SaveThread 를 깨운다.
-		//}
-		Sleep(0);
-	}
+	IOCP_ECHO_SERVER server("127.0.0.1", serverPort, threadPoolSize, runningThread, false, 5000, 200);
 
 	//WaitForMultipleObjects(Thread_Count - 1, _CreateThread, true, INFINITE);//모든 스레드가 정지될때까지 무한대기하면서 확인
 	printf("process Stop END\n");
