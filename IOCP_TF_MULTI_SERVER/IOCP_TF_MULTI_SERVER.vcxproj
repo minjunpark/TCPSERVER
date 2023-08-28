@@ -133,6 +133,7 @@
     <ClCompile Include="CSerealBuffer.cpp" />
     <ClCompile Include="IOCP_TF_SERVER.cpp" />
     <ClCompile Include="main.cpp" />
+    <ClCompile Include="PacketFunction.cpp" />
     <ClCompile Include="Profile.cpp" />
   </ItemGroup>
   <ItemGroup>
@@ -147,7 +148,11 @@
     <ClInclude Include="CTF_define.h" />
     <ClInclude Include="IOCP_TF_SERVER.h" />
     <ClInclude Include="NetErrorCode.h" />
+    <ClInclude Include="PacketDefine.h" />
+    <ClInclude Include="PacketFunction.h" />
+    <ClInclude Include="Player.h" />
     <ClInclude Include="Profile.h" />
+    <ClInclude Include="Sector.h" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">

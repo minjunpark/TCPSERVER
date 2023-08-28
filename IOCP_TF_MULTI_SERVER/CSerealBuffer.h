@@ -4,6 +4,8 @@
 #define  __PACKET__
 #include <Windows.h>
 
+#include "CMemoryPool.h"
+
 struct LanServerHeader
 {
 	unsigned short _Len;
@@ -31,13 +33,13 @@ protected:
 	int _Rear;//쓰기버퍼 사이즈
 	int _Front;//읽기쓰기 사이즈
 	int	_UseSize;//사용중인 크기
-	
-	
+
+
 
 public:
-	
+
 	/*---------------------------------------------------------------
-	Packet Enum.
+	CSerealBuffer Enum.
 
 	----------------------------------------------------------------*/
 	enum en_PACKET
@@ -72,9 +74,9 @@ public:
 	// Parameters: 없음.
 	// Return: (int)패킷 버퍼 사이즈 얻기.
 	//////////////////////////////////////////////////////////////////////////
-	int	GetBufferSize(void) 
-	{ 
-		return _BufferSize; 
+	int	GetBufferSize(void)
+	{
+		return _BufferSize;
 	}
 
 	//////////////////////////////////////////////////////////////////////////
@@ -83,9 +85,9 @@ public:
 	// Parameters: 없음.
 	// Return: (int)사용중인 데이타 사이즈.
 	//////////////////////////////////////////////////////////////////////////
-	int	GetUseSize(void) 
-	{ 
-		return _UseSize; 
+	int	GetUseSize(void)
+	{
+		return _UseSize;
 	}
 
 	//////////////////////////////////////////////////////////////////////////
@@ -124,7 +126,17 @@ public:
 	// Parameters: 없음.
 	// Return: (char *)버퍼 포인터.
 	//////////////////////////////////////////////////////////////////////////
-	char* GetBufferPtr(void) 
+	char* GetBufferPtr(void)
+	{
+		return _Start;
+	}
+
+	char* GetReadPtr(void)
+	{
+		return _Start;
+	}
+
+	char* GetWritePtr(void)
 	{
 		return _Start;
 	}
@@ -178,7 +190,7 @@ public:
 	//////////////////////////////////////////////////////////////////////////
 	CSerealBuffer& operator << (unsigned char byValue)
 	{
-		if (_BufferSize - _Rear >= sizeof(unsigned char)) 
+		if (_BufferSize - _Rear >= sizeof(unsigned char))
 		{
 			memcpy(_Start + _Rear, &byValue, sizeof(unsigned char));//넣을 크기만큼 복사해서 넣고
 			_Rear += sizeof(unsigned char);//넣은만큼 쓰기버퍼 이동
@@ -186,10 +198,10 @@ public:
 		}
 		return *this;
 	};
-	
+
 	CSerealBuffer& operator << (char chValue)
 	{
-		if (_BufferSize - _Rear >= sizeof(char)) 
+		if (_BufferSize - _Rear >= sizeof(char))
 		{
 			memcpy(_Start + _Rear, &chValue, sizeof(unsigned char));//넣을 크기만큼 복사해서 넣고
 			_Rear += sizeof(char);//넣은만큼 쓰기버퍼 이동
@@ -200,7 +212,7 @@ public:
 
 	CSerealBuffer& operator << (short shValue)
 	{
-		if (_BufferSize - _Rear >= sizeof(short)) 
+		if (_BufferSize - _Rear >= sizeof(short))
 		{
 			memcpy(_Start + _Rear, &shValue, sizeof(short));//넣을 크기만큼 복사해서 넣고
 			_Rear += sizeof(short);//넣은만큼 이동시키기
@@ -208,7 +220,7 @@ public:
 		}
 		return *this;
 	};
-	
+
 	CSerealBuffer& operator << (unsigned short wValue)
 	{
 		if (_BufferSize - _Rear >= sizeof(unsigned short)) {
@@ -229,7 +241,18 @@ public:
 		}
 		return *this;
 	};
-	
+
+	CSerealBuffer& operator << (unsigned int iValue)
+	{
+		if (_BufferSize - _Rear >= sizeof(unsigned int))
+		{
+			memcpy(_Start + _Rear, &iValue, sizeof(unsigned int));//넣을 크기만큼 복사해서 넣고
+			_Rear += sizeof(unsigned int);//넣은만큼 이동시키기
+			_UseSize += sizeof(unsigned int);
+		}
+		return *this;
+	};
+
 	CSerealBuffer& operator << (long lValue)
 	{
 		if (_BufferSize - _Rear >= sizeof(long))
@@ -262,7 +285,7 @@ public:
 		}
 		return *this;
 	};
-	
+
 	CSerealBuffer& operator << (double dValue)
 	{
 		if (_BufferSize - _Rear >= sizeof(double))
@@ -290,7 +313,7 @@ public:
 	//////////////////////////////////////////////////////////////////////////
 	CSerealBuffer& operator >> (BYTE& byValue)
 	{
-		if (_UseSize >= sizeof(BYTE)) 
+		if (_UseSize >= sizeof(BYTE))
 		{
 			memcpy(&byValue, _Start + _Front, sizeof(BYTE));//뺄만큼 복사해서 뺀다.
 			_Front += sizeof(BYTE);//버퍼에서 뺀만큼 이동시킨다.
@@ -298,11 +321,11 @@ public:
 		}
 		return *this;
 	};
-	
+
 	CSerealBuffer& operator >> (char& chValue)
 	{
 		// 읽어야 할 크기보다 버퍼 크기가 작으면 아무것도 하지 않음
-		if (_UseSize >= sizeof(char)) 
+		if (_UseSize >= sizeof(char))
 		{
 			memcpy(&chValue, _Start + _Front, sizeof(char));// 버퍼에서 값을 복사해서 읽어옴
 			_Front += sizeof(char);// 읽은 크기만큼 포인터를 이동시킴
@@ -313,7 +336,7 @@ public:
 
 	CSerealBuffer& operator >> (short& shValue)
 	{
-		if (_UseSize >= sizeof(short)) 
+		if (_UseSize >= sizeof(short))
 		{
 			memcpy(&shValue, _Start + _Front, sizeof(short));//뺄만큼 복사해서 뺀다.
 			_Front += sizeof(short);//읽은만큼
@@ -321,10 +344,10 @@ public:
 		}
 		return *this;
 	};
-	
+
 	CSerealBuffer& operator >> (WORD& wValue)
 	{
-		if (_UseSize >= sizeof(WORD)) 
+		if (_UseSize >= sizeof(WORD))
 		{
 			memcpy(&wValue, _Start + _Front, sizeof(WORD));//뺄만큼 복사해서 뺀다.
 			_Front += sizeof(WORD);//읽은만큼
@@ -335,7 +358,7 @@ public:
 
 	CSerealBuffer& operator >> (int& iValue)
 	{
-		if (_UseSize >= sizeof(int)) 
+		if (_UseSize >= sizeof(int))
 		{
 			memcpy(&iValue, _Start + _Front, sizeof(int));//뺄만큼 복사해서 뺀다.
 			_Front += sizeof(int);//읽은만큼
@@ -343,10 +366,21 @@ public:
 		}
 		return *this;
 	};
-	
+
+	CSerealBuffer& operator >> (unsigned int& iValue)
+	{
+		if (_UseSize >= sizeof(unsigned int))
+		{
+			memcpy(&iValue, _Start + _Front, sizeof(int));//뺄만큼 복사해서 뺀다.
+			_Front += sizeof(unsigned int);//읽은만큼
+			_UseSize -= sizeof(unsigned int);//뺀만큼 사용한 사이즈에서 뺸다.
+		}
+		return *this;
+	};
+
 	CSerealBuffer& operator >> (DWORD& dwValue)
 	{
-		if (_UseSize >= sizeof(DWORD)) 
+		if (_UseSize >= sizeof(DWORD))
 		{
 			memcpy(&dwValue, _Start + _Front, sizeof(DWORD));//뺄만큼 복사해서 뺀다.
 			_Front += sizeof(DWORD);//읽은만큼
@@ -354,10 +388,10 @@ public:
 		}
 		return *this;
 	};
-	
+
 	CSerealBuffer& operator >> (float& fValue)
 	{
-		if (_UseSize >= sizeof(float)) 
+		if (_UseSize >= sizeof(float))
 		{
 			memcpy(&fValue, _Start + _Front, sizeof(float));//뺄만큼 복사해서 뺀다.
 			_Front += sizeof(float);//읽은만큼
@@ -368,7 +402,7 @@ public:
 
 	CSerealBuffer& operator >> (__int64& iValue)
 	{
-		if (_UseSize >= sizeof(__int64)) 
+		if (_UseSize >= sizeof(__int64))
 		{
 			memcpy(&iValue, _Start + _Front, sizeof(__int64));//뺄만큼 복사해서 뺀다.
 			_Front += sizeof(__int64);//읽은만큼
@@ -376,10 +410,10 @@ public:
 		}
 		return *this;
 	};
-	
+
 	CSerealBuffer& operator >> (double& dValue)
 	{
-		if (_UseSize >= sizeof(double)) 
+		if (_UseSize >= sizeof(double))
 		{
 			memcpy(&dValue, _Start + _Front, sizeof(double));//뺄만큼 복사해서 뺀다.
 			_Front += sizeof(double);//읽은만큼
@@ -387,7 +421,7 @@ public:
 		}
 		return *this;
 	};
-	
+
 	CSerealBuffer& operator >> (DWORD64& iValue)
 	{
 		if (_UseSize >= sizeof(DWORD64))
@@ -399,4 +433,6 @@ public:
 		return *this;
 	};
 };
+
+extern CMemoryPool<CSerealBuffer> g_PacketObjectPool;
 #endif

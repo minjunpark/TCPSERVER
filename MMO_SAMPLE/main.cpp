@@ -27,8 +27,6 @@ constexpr int ATTACK3_Y_DISTANCE = 40;
 #include "PacketFunction.h"
 #include "Session.h"
 #include "Player.h"
-//#include "profiler.h"
-//#include "SerializingBuffer.h"
 #include "CSerealBuffer.h"
 #include <iostream>
 #include <conio.h>

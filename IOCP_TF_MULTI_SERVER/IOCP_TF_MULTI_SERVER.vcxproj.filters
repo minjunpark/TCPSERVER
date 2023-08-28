@@ -36,6 +36,9 @@
     <ClCompile Include="IOCP_TF_SERVER.cpp">
       <Filter>소스 파일</Filter>
     </ClCompile>
+    <ClCompile Include="PacketFunction.cpp">
+      <Filter>소스 파일</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="CMemoryPool.h">
@@ -72,6 +75,18 @@
       <Filter>헤더 파일</Filter>
     </ClInclude>
     <ClInclude Include="CTF_define.h">
+      <Filter>헤더 파일</Filter>
+    </ClInclude>
+    <ClInclude Include="Player.h">
+      <Filter>헤더 파일</Filter>
+    </ClInclude>
+    <ClInclude Include="Sector.h">
+      <Filter>헤더 파일</Filter>
+    </ClInclude>
+    <ClInclude Include="PacketDefine.h">
+      <Filter>헤더 파일</Filter>
+    </ClInclude>
+    <ClInclude Include="PacketFunction.h">
       <Filter>헤더 파일</Filter>
     </ClInclude>
   </ItemGroup>

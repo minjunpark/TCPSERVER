@@ -191,12 +191,12 @@ public:
 		return false;//현재 사용중 카운터가 없는 상황인데 들어온 경우 이므로 false를 리턴한다.
 	};
 
-	void print()
-	{
-		printf("m_iCapacity %d\n", m_iCapacity);
-		printf("m_iUseCount %d\n", m_iUseCount);
-		printf("m_iPlacementNew %d\n", m_iPlacementNew);
-	};
+	//void print()
+	//{
+	//	printf("m_iCapacity %d\n", m_iCapacity);
+	//	printf("m_iUseCount %d\n", m_iUseCount);
+	//	printf("m_iPlacementNew %d\n", m_iPlacementNew);
+	//};
 
 	//////////////////////////////////////////////////////////////////////////
 	// 생성자 말고 직접 메모리풀을 Set하기
